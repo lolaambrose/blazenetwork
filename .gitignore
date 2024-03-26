@@ -1,0 +1,15 @@
+# Ignore virtual environment files
+venv/
+env/
+env2/
+env3/
+.venv/
+.venv2/
+.venv3/
+
+# Ignore cache files
+__pycache__/
+
+# Ignore temporary directories
+tmp/
+temp/
