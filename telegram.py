@@ -104,7 +104,7 @@ async def start(message: types.Message):
         keyboard=kb
     )
 
-    await message.reply("Добро пожаловать в <b>bladeVPN</b>!\n\nВыберите действие", reply_markup=keyboard)
+    await message.reply("Добро пожаловать в <b>blazeVPN</b>!\n\nВыберите действие", reply_markup=keyboard)
 
 
 """
@@ -119,7 +119,7 @@ async def start(message: types.Message):
     Отправляет информацию о подписке пользователя.
 """
 @dp.message(lambda message: message.text == "⚙️ Моя подписка")
-async def my_subscription(message: types.Message):
+async def menu_subscription(message: types.Message):
     await bot.send_chat_action(message.chat.id, 'typing')
 
     user = await UserService.get(message.from_user.id)
@@ -158,20 +158,8 @@ async def my_subscription(message: types.Message):
                 f"<b>Выберите нужный сервер для подключения</b>",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
-
-"""
-    connect_to_server(query: types.CallbackQuery)
-
-    Обрабатывает запрос пользователя на подключение к серверу.
-
-    Аргументы:
-    query -- объект запроса обратного вызова Telegram
-
-    Вывод:
-    Отправляет ссылку для подключения к серверу.
-"""
 @dp.callback_query(lambda query: query.data.startswith("connect_"))
-async def connect_to_server(query: types.CallbackQuery):
+async def action_connect(query: types.CallbackQuery):
     await bot.send_chat_action(query.message.chat.id, 'typing')
 
     server_id = query.data.split("_")[1]
@@ -229,7 +217,7 @@ async def connect_to_server(query: types.CallbackQuery):
 """
 @dp.callback_query(lambda query: query.data == ("menu_buy_subscription"))
 @dp.message(lambda message: message.text == "💳 Купить подписку")
-async def buy_menu(argument):
+async def menu_buy(argument):
     if isinstance(argument, types.Message):
         message = argument
     elif isinstance(argument, types.CallbackQuery):
@@ -266,7 +254,7 @@ async def buy_menu(argument):
     Отправляет пользователю подтверждение покупки подписки.
 """
 @dp.callback_query(lambda query: query.data.startswith("buy_"))
-async def handle_buy_callback(query: types.CallbackQuery):
+async def action_buy_callback(query: types.CallbackQuery):
     await bot.send_chat_action(query.message.chat.id, 'typing')
     await bot.answer_callback_query(query.id)
     
@@ -318,7 +306,7 @@ async def handle_buy_callback(query: types.CallbackQuery):
     Подтверждает покупку подписки и обновляет информацию о пользователе.
 """
 @dp.callback_query(lambda query: query.data.startswith("confirm_buy_"))
-async def confirm_buy(query: types.CallbackQuery):
+async def action_confirm_buy(query: types.CallbackQuery):
     await bot.send_chat_action(query.message.chat.id, 'typing')
     await bot.answer_callback_query(query.id)
 
@@ -348,68 +336,11 @@ async def confirm_buy(query: types.CallbackQuery):
     user.balance -= sub_data['price']
     await UserService.upsert(user)
 
-    result_sub = await add_subscription(user, sub_data)
+    result_sub = await Admin.add_subscription(user, sub_data)
 
     await network.upsert_client(result_sub.datetime_end, user, True)
     
     await start(query.message) 
-
-
-"""
-    add_subscription(user: User, sub_data: dict) -> Subscription
-
-    Добавляет подписку пользователю.
-
-    Аргументы:
-    user -- объект пользователя
-    sub_data -- данные подписки
-
-    Вывод:
-    Возвращает объект подписки.
-"""
-async def add_subscription(user: User, sub_data: dict) -> Subscription:
-    user_sub = await user.get_active_sub()
-    
-    if user_sub:
-        return False
-    
-    new_sub = Subscription(
-        user_id=user.id, 
-        datetime_start=datetime.utcnow(), 
-        datetime_end=datetime.utcnow() + timedelta(days=sub_data["duration"]),
-        plan=sub_data["name"])
-
-    await bot.send_message(user.id, f"✅ Подписка <b>{sub_data['name']}</b> успешно куплена\n")
-    
-    return await SubService.upsert(new_sub)
-
-
-async def remove_subscription(sub: Subscription):
-    user = await sub.get_user()
-
-    # Если пользователь найден, обновляем его статус
-    if user:
-        await network.upsert_client(datetime.now(), user, False)
-        logger.info(f"user {user.id}'s subscription has been stopped.")
-        
-        await bot.send_message(user.id, f"❌ Ваша подписка <b>{sub.plan}</b> закончилась")
-    else:
-        logger.info(f"user {sub.user_id} not found.")
-
-
-
-async def add_balance(user: User, amount: float):
-    # проверить на наличие пользователя
-    if not user:
-        logger.error(f'user {user.id} not found.')
-        return
-
-    user.balance += amount
-
-    await UserService.upsert(user)
-    await bot.send_message(user.id, f"💰 Ваш баланс успешно пополнен на ${amount}.")
-
-    logger.info(f'user {user.id} balance has been updated by ${amount}.')
 
 """
     menu_deposit(query: types.CallbackQuery)
@@ -468,40 +399,117 @@ async def menu_deposit(query: types.CallbackQuery):
     Отправляет информацию о профиле пользователя.
 """
 @dp.message(lambda message: message.text == "👤 Мой профиль")
-async def my_profile(message: types.Message):
+async def menu_my_profile(message: types.Message):
     await bot.send_chat_action(message.chat.id, 'typing')
 
     user = await UserService.get(message.from_user.id)
     
     if user:
-        kb = [
-            [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="menu_deposit")]
-        ]
+        await Utils.render_profile(user)
+    else:
+        await message.answer("<b>Пользователь не найден.</b>")
+  
+        
+"""
+    information(message: types.Message)
+
+    Обрабатывает запрос пользователя на получение информации о сервисе.
+
+    Аргументы:
+    message -- объект сообщения Telegram
+
+    Вывод:
+    Отправляет информацию о сервисе.
+"""
+@dp.message(lambda message: message.text == "ℹ️ Информация")
+async def menu_information(message: types.Message):
+    await bot.send_chat_action(message.chat.id, 'typing')
+
+    kb = [
+        [InlineKeyboardButton(text="🇷🇺 Служба поддержки", url='tg://resolve?domain=blazenetworksupp')]
+    ]
+    markup = InlineKeyboardMarkup(inline_keyboard=kb)
+    
+    await message.answer("📄 Добро пожаловать в <b>blazeVPN</b>!\n\n"
+                         "blazeVPN - это безопасный VPN-сервис, использующий протокол VLess. "
+                         "VLess - это протокол, который отлично маскируется и обходит многие средства цензурирования.\n"
+                         "Не беспокойтесь о безопасности своих данных - blazeVPN обеспечивает шифрование трафика и защиту вашей приватности.\n"
+                         "Свяжитесь с нашей поддержкой для получения дополнительной информации.", reply_markup=markup)
+
+class Utils:
+    @staticmethod
+    @aiocron.crontab('0 0 * * *')
+    async def stop_expired_subs():
+        logger.info(f"started...")
+        # Получаем вчерашнюю дату
+        yesterday = datetime.now() - timedelta(days=1)
+
+        # Получаем все подписки, которые закончились вчера
+        expired_subs = await SubService.get_by_end_date(yesterday)
+
+        for sub in expired_subs:
+            await Admin.remove_subscription(sub)
+            logger.info(f"subscription for {sub.user_id} has been stopped.")    
+
+    @staticmethod
+    @aiocron.crontab('0 15 * * *')
+    async def notify_expiring_subs():
+        logger.info(f"started...")
+        kb = [InlineKeyboardButton(text="💳 Продлить подписку", callback_data="menu_buy_subscription")]
+
+        users = await UserService.get_all()  # Получаем всех пользователей
+        for user in users:
+            active_sub = await user.get_active_sub()  # Получаем активную подписку пользователя
+            if active_sub:
+                days_left = (active_sub.datetime_end - datetime.now()).days  # Вычисляем, сколько дней осталось до конца подписки
+                if days_left in [1, 5]:
+                    await bot.send_message(user.id, f"⏳ У вас осталось <b>{days_left} дней</b> до конца подписки.", 
+                                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[kb]))   
+
+    @staticmethod
+    async def render_profile(user: User, chat_id: int = None, admin: bool = False):
+        if not chat_id:
+            chat_id = user.id
+
+        if not admin:
+            kb = [
+                [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="menu_deposit")]
+            ]
+
+        profile_info =  f"👤 <b>Ваш профиль</b>\n" \
+                        f"<b>├ ID –</b> <code>{user.id}</code>\n" \
+                        f"<b>└ Баланс –</b> ${user.balance}\n" \
+
+        if admin:                    
+            profile_info += f"📅 Дата регистрации – {user.register_time.strftime('%d/%m/%Y')}\n" \
+                            f"🆔 UUID – {str(user.uuid)}\n" \
+                            f"💸 Потраченная сумма – ${await user.total_spent}"
 
         # Выводим информацию о пользователе
-        await message.answer(f"👤 <b>Ваш профиль</b>\n"
-                             f"<b>├ ID –</b> <code>{user.id}</code>\n"
-                             f"<b>└ Баланс –</b> ${user.balance}")
+        await bot.send_message(chat_id, profile_info, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         
         active_sub = await user.get_active_sub()
         
         if active_sub:
-            kb += [
-                [InlineKeyboardButton(text="💳 Продлить подписку", callback_data="menu_buy_subscription")]
-                ]
+            if not admin:
+                kb += [
+                    [InlineKeyboardButton(text="💳 Продлить подписку", callback_data="menu_buy_subscription")]
+                    ]
 
             # Выводим информацию о подписках
-            await message.answer(    "<b>🔐 Активная подписка</b>\n\n"
-                                     f"✅ <b>{active_sub.plan}</b>\n"
-                                     f"<b>├ </b>📆 Начинается <b>{active_sub.datetime_start.strftime('%d/%m/%y %H:%M')}</b>\n"
-                                     f"<b>└ </b>⏳ Заканчивается <b>{active_sub.datetime_end.strftime('%d/%m/%y %H:%M')}</b>", 
-                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+            await bot.send_message(chat_id, "<b>🔐 Активная подписка</b>\n\n"
+                                            f"✅ <b>{active_sub.plan}</b>\n"
+                                            f"<b>├ </b>📆 Начинается <b>{active_sub.datetime_start.strftime('%d/%m/%y %H:%M')}</b>\n"
+                                            f"<b>└ </b>⏳ Заканчивается <b>{active_sub.datetime_end.strftime('%d/%m/%y %H:%M')}</b>\n\n"
+                                            f"{('🔧 Вы – <b>администратор!</b>' if await user.is_admin else '')}", 
+                                            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         else:
-            kb += [
-                [InlineKeyboardButton(text="💳 Купить подписку", callback_data="menu_buy_subscription")]
-            ]
+            if not admin:
+                kb += [
+                    [InlineKeyboardButton(text="💳 Купить подписку", callback_data="menu_buy_subscription")]
+                ]
 
-            await message.answer("<b>У вас нет активных подписок.</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+            await bot.send_message(chat_id, "<b>У вас нет активных подписок.</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         
         all_subs = await user.get_all_subs()
             
@@ -521,245 +529,87 @@ async def my_profile(message: types.Message):
                     prev_subs.insert(0,"<b>⌛ Прошлые подписки</b> (последние 5)\n\n")
                     prev_subs = ''.join(prev_subs)
 
-                    await message.answer(text=prev_subs)
-    else:
-        await message.answer("<b>Пользователь не найден.</b>")
-  
-        
-"""
-    information(message: types.Message)
-
-    Обрабатывает запрос пользователя на получение информации о сервисе.
-
-    Аргументы:
-    message -- объект сообщения Telegram
-
-    Вывод:
-    Отправляет информацию о сервисе.
-"""
-@dp.message(lambda message: message.text == "ℹ️ Информация")
-async def information(message: types.Message):
-    await bot.send_chat_action(message.chat.id, 'typing')
-
-    kb = [
-        [InlineKeyboardButton(text="🇷🇺 Служба поддержки", url='tg://resolve?domain=blazenetworksupp')]
-    ]
-    markup = InlineKeyboardMarkup(inline_keyboard=kb)
-    
-    await message.answer("📄 Добро пожаловать в <b>blazeVPN</b>!\n\n"
-                         "blazeVPN - это безопасный VPN-сервис, использующий протокол VLess. "
-                         "VLess - это протокол, который отлично маскируется и обходит многие средства цензурирования.\n"
-                         "Не беспокойтесь о безопасности своих данных - blazeVPN обеспечивает шифрование трафика и защиту вашей приватности.\n"
-                         "Свяжитесь с нашей поддержкой для получения дополнительной информации.", reply_markup=markup)
-
-
-"""
-    check_subscriptions()
-
-    Проверяет всех пользователей с активной подпиской, и если до конца подписки осталось 5 дней или 1 день, оповещает их об этом в лс.
-
-    Вывод:
-    Отправляет уведомления пользователям, у которых подписка скоро закончится.
-"""
-@aiocron.crontab('0 15 * * *')
-async def notify_expiring_subs():
-    logger.info(f"started...")
-    kb = [InlineKeyboardButton(text="💳 Продлить подписку", callback_data="menu_buy_subscription")]
-
-    users = await UserService.get_all()  # Получаем всех пользователей
-    for user in users:
-        active_sub = await user.get_active_sub()  # Получаем активную подписку пользователя
-        if active_sub:
-            days_left = (active_sub.datetime_end - datetime.now()).days  # Вычисляем, сколько дней осталось до конца подписки
-            if days_left in [1, 5]:
-                await bot.send_message(user.id, f"⏳ У вас осталось <b>{days_left} дней</b> до конца подписки.", 
-                                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[kb]))
-
-
-"""
-    stop_expired_subs()
-
-    This function checks all users with active subscriptions, and if the subscription has ended, it updates the user's status.
-
-    Output:
-    Updates the status of users whose subscriptions have ended.
-"""
-@aiocron.crontab('0 0 * * *')
-async def stop_expired_subs():
-    logger.info(f"started...")
-    # Получаем вчерашнюю дату
-    yesterday = datetime.now() - timedelta(days=1)
-
-    # Получаем все подписки, которые закончились вчера
-    expired_subs = await SubService.get_by_end_date(yesterday)
-
-    for sub in expired_subs:
-        await remove_subscription(sub)
-        logger.info(f"subscription for {sub.user_id} has been stopped.")
+                    await bot.send_message(chat_id, text=prev_subs)
         
 
-@dp.message(Command(commands=["login"]))
-@admin_required
-async def login(message: types.Message, **kwargs):
-    await network.login_all()
-    
-
-@dp.message(Command(commands=['add_client']))
-@admin_required 
-async def add_client(message: types.Message, command: CommandObject, **kwargs):
-    args = None
-    if command.args and len(command.args.split()) == 6:
-        args = command.args.split()
-    else:
-        await message.reply("Недостаточно аргументов.")
-        return
-
-    inbound_id, email, enable, flow, limit_ip, expire_time = args[:6]
-    enable = enable.lower() in ['true', '1', 't', 'y', 'yes']
-    results = await network.perform_action(
-        "add_client",
-        inbound_id=int(inbound_id),
-        email=email,
-        uuid=str(uuid.uuid4()),
-        enable=enable,
-        flow=flow,
-        limit_ip=int(limit_ip),
-        total_gb=int(0),
-        expire_time=int(expire_time),
-        telegram_id="",
-        subscription_id=""
-    )
-    
-    if any(result["success"] is not False for result in results):  # Если есть хотя бы один успешный результат
-        success_count = sum(result is not None for result in results)
-        await message.reply(f"Клиент успешно добавлен на {success_count} сервер(ах).")
-    else:  # Если нет успешных результатов
-        await message.reply("Не удалось добавить клиента на ни один из серверов.")
-     
-     
-@dp.message(Command(commands=['update_client']))
-@admin_required 
-async def update_client(message: types.Message, command: CommandObject, **kwargs):
-    args = None
-    if command.args and len(command.args.split()) == 7:
-        args = command.args.split()
-    else:
-        await message.reply("Недостаточно аргументов.")
-        return
-
-    inbound_id, email, uuid, enable, flow, limit_ip, expire_time = args[:7]
-    enable = enable.lower() in ['true', '1', 't', 'y', 'yes']
-    results = await network.perform_action(
-        "update_client",
-        inbound_id=int(inbound_id),
-        email=email,
-        uuid=uuid,
-        enable=enable,
-        flow=flow,
-        limit_ip=int(limit_ip),
-        total_gb=int(0),
-        expire_time=int(expire_time),
-        telegram_id="",
-        subscription_id=""
-    )
-    
-    if any(result["success"] is not False for result in results):  # Если есть хотя бы один успешный результат
-        success_count = sum(result is not None for result in results)
-        await message.reply(f"Клиент успешно обновлен на {success_count} сервер(ах).")
-    else:  # Если нет успешных результатов
-        await message.reply("Не удалось обновить клиента на ни одном из серверов.")
-     
-@dp.message(Command(commands=['get_client']))
-@admin_required 
-async def get_client(message: types.Message, command: CommandObject, **kwargs):
-    args = None
-    if command.args and len(command.args.split()) == 2:
-        args = command.args.split()
-    else:
-        await message.reply("Недостаточно аргументов.")
-        return
-    
-    inbound_id, email = args[:2]
-    
-    results = await network.perform_action(
-        "get_client",
-        inbound_id = int(inbound_id),
-        email = email
-        )
-    
-    if results:
-        user = results[0]
-        msg = await message.reply(f"Пользователь {user['email']} найден\n\n<i>{user}</i>")
-    else:
-        await message.reply("Пользователь не найден")
- 
-@dp.message(Command(commands=['delete_client']))
-@admin_required 
-async def delete_client(message: types.Message, command: CommandObject, **kwargs):
-    args = None
-    if command.args and len(command.args.split()) == 2:
-        args = command.args.split()
-    else:
-        await message.reply("Недостаточно аргументов.")
-        return
-    
-    inbound_id, email = args[:2]
-    
-    results = await network.perform_action(
-        "delete_client",
-        inbound_id = int(inbound_id),
-        email = email
-        )
-    
-    if results[0] is not None:  # Если есть хотя бы один успешный результат
-        if any(result["success"] is not False for result in results):
-            success_count = sum(result is not None for result in results)
-            await message.reply(f"Клиент {email} успешно удален на {success_count} сервер(ах).")
-    else:  # Если нет успешных результатов
-        await message.reply("Не удалось удалить клиента на ни одном из серверов.")
- 
-@dp.message(Command(commands=['get_client_stats']))
-@admin_required 
-async def get_client_stats(message: types.Message, command: CommandObject, **kwargs):
-    args = None
-    if command.args and len(command.args.split()) == 2:
-        args = command.args.split()
-    else:
-        await message.reply("Недостаточно аргументов.")
-        return
-    
-    inbound_id, email = args[:2]
-    
-    results = await network.perform_action(
-        "get_client_stats",
-        inbound_id = int(inbound_id),
-        email = email
-        )
-    
-    if results[0] is not None:
-        if any(result["id"] is not False for result in results):
-            user = results[0]
-            success_count = sum(result is not None for result in results)
-            await message.reply(f"Статистика {user['email']} успешно найдена на {success_count} сервер(ах).\n\n<i>{results}</i>")
-    else:
-        await message.reply("Пользователь не найден")
-  
-@dp.message(Command(commands=['get_all_client_configs']))
-@admin_required  
-async def get_all_client_configs(message: types.Message, command: CommandObject, **kwargs):
-    args = None
-    if command.args and len(command.args.split()) == 2:
-        args = command.args.split()
-    else:
-        await message.reply("Недостаточно аргументов.")
-        return
-    
-    inbound_id, email = args[:2]
-    
-    results = await network.serverconfigs_by_user(inbound_id, email)
-    
-    reply = ""
-    for result in results:
-        reply += f"<b>{result[0]['name']}:</b>\n<code>{result[1]}</code>\n\n"
+class Admin:
+    @staticmethod
+    async def add_subscription(user: User, sub_data: dict) -> Subscription:
+        user_sub = await user.get_active_sub()
         
-    await message.reply(reply)
+        if user_sub:
+            return False
+        
+        new_sub = Subscription(
+            user_id=user.id, 
+            datetime_start=datetime.utcnow(), 
+            datetime_end=datetime.utcnow() + timedelta(days=sub_data["duration"]),
+            plan=sub_data["name"],
+            cost=sub_data["price"])
+
+        await bot.send_message(user.id, f"✅ Подписка <b>{sub_data['name']}</b> успешно куплена\n")
+        
+        return await SubService.upsert(new_sub)
+
+    @staticmethod
+    async def remove_subscription(sub: Subscription):
+        user = await sub.get_user()
+
+        # Если пользователь найден, обновляем его статус
+        if user:
+            await network.upsert_client(datetime.now(), user, False)
+            logger.info(f"user {user.id}'s subscription has been stopped.")
+            
+            await bot.send_message(user.id, f"❌ Ваша подписка <b>{sub.plan}</b> закончилась")
+        else:
+            logger.info(f"user {sub.user_id} not found.")
+
+    @staticmethod
+    async def add_balance(user: User, amount: float):
+        # проверить на наличие пользователя
+        if not user:
+            logger.error(f'user {user.id} not found.')
+            return
+
+        user.balance += amount
+
+        await UserService.upsert(user)
+        await bot.send_message(user.id, f"💰 Ваш баланс успешно пополнен на ${amount}")
+
+        logger.info(f'user {user.id} balance has been updated by +${amount}')
+
+    @staticmethod
+    @dp.message(Command(commands=["login"]))
+    @admin_required
+    async def command_login(message: types.Message, **kwargs):
+        await network.login_all()
+
+    @staticmethod
+    @dp.message(Command(commands=["add_balance"]))
+    @admin_required
+    async def command_add_balance(message: types.Message, **kwargs):
+        user_id = int(message.text.split(" ")[1])
+        amount = float(message.text.split(" ")[2])
+
+        user = await UserService.get(user_id)
+        if not user:
+            await message.answer("Пользователь не найден.")
+            return
+
+        await Admin.add_balance(user, amount)
+        await message.answer(f"Баланс пользователя {user_id} успешно пополнен на ${amount}")
+
+    @staticmethod
+    @dp.message(Command(commands=["profile"]))
+    @admin_required
+    async def command_profile(message: types.Message, **kwargs):
+        user_id = int(message.text.split(" ")[1])
+
+        user = await UserService.get(user_id)
+        if not user:
+            await message.answer("Пользователь не найден.")
+            return
+
+        await message.answer(f"Вот профиль пользователя <code>{user_id}</code>")
+
+        await Utils.render_profile(user, chat_id=message.chat.id, admin=True)

@@ -26,7 +26,7 @@ async def create_wallet(currency, network, order_id, url_callback=None, from_ref
     encoded_data = json.dumps(data)
 
     # Генерация подписи
-    sign = hashlib.md5((base64.b64encode(encoded_data.encode()) + config.MERCHANT_API_KEY)).hexdigest()
+    sign = hashlib.md5((base64.b64encode(encoded_data.encode()) + config.MERCHANT_API_KEY.encode())).hexdigest()
 
     # Заголовки запроса
     headers = {

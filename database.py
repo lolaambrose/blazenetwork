@@ -83,12 +83,21 @@ class User(BaseModel):
     async def is_admin(self) -> bool:
         return self.id in config.TELEGRAM_ADMINS
 
+    @property
+    async def total_spent(self) -> float:
+        subscriptions = await self.get_all_subs()
+        total_spent = 0.0
+        for sub in subscriptions:
+            total_spent += sub.cost
+        return total_spent
+
 class Subscription(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias='_id')
     user_id: int
     datetime_start: datetime
     datetime_end: datetime
     plan: str
+    cost: float
 
     @property
     def active(self) -> bool:
@@ -167,18 +176,21 @@ async def initialize_subscriptions():
             "user_id": int(6113190687),
             "datetime_start": datetime.utcnow(),
             "datetime_end": datetime.now(tz=timezone.utc) + relativedelta(years=99),
+            "cost": 0.0,
             "plan": "infinite"
             })
         await db.subscriptions.insert_one({
             "user_id": int(6113190687),
             "datetime_start": datetime(day=13, month=4, year=2018),
             "datetime_end": datetime(day=13, month=4, year=2019),
+            "cost": 99.0,
             "plan": "test 1"
             })
         await db.subscriptions.insert_one({
             "user_id": int(6113190687),
             "datetime_start": datetime(day=13, month=4, year=2019),
             "datetime_end": datetime(day=13, month=4, year=2021),
+            "cost": 88.0,
             "plan": "test 2"
             })
         

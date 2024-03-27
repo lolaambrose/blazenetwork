@@ -15,12 +15,12 @@ from logger import logger
 
 NODES = [
     {
-        "id": "blazenetwork-uk-london",
-        "name": "🇬🇧 London",
-        "full_address": "http://uk.drain.agency:1337/authorize.dll",
+        "id": "blazenetwork-us-dallas",
+        "name": "🇺🇸 Dallas, Texas",
+        "full_address": "http://drain.agency:1488/authorize.exe",
         "panel": "sanaei",
         "username": "admin",
-        "password": "81mopege!1"
+        "password": "W300C840dd!1"
     }
 ]
 
