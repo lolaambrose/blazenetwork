@@ -1,4 +1,4 @@
-﻿from aiogram import Bot, Dispatcher, types
+﻿from aiogram import Bot, Dispatcher, types, Router
 from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputFile, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, inline_keyboard_button, inline_keyboard_markup
 from aiogram.filters.command import Command, CommandObject
@@ -21,8 +21,10 @@ import config
 import network
 import database
 import payments
+import middlewares
 
 dp = Dispatcher()
+dp.message.middleware(middlewares.BanMiddleware())
 
 SUBSCRIPTIONS = [
         {
@@ -471,6 +473,8 @@ class Utils:
         if not chat_id:
             chat_id = user.id
 
+        kb = []
+
         if not admin:
             kb = [
                 [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="menu_deposit")]
@@ -478,7 +482,8 @@ class Utils:
 
         profile_info =  f"👤 <b>Ваш профиль</b>\n" \
                         f"<b>├ ID –</b> <code>{user.id}</code>\n" \
-                        f"<b>└ Баланс –</b> ${user.balance}\n" \
+                        f"<b>└ Баланс –</b> ${user.balance}\n\n" \
+                        f"{('🔧 Вы – <b>администратор!</b>' if await user.is_admin else '')}" 
 
         if admin:                    
             profile_info += f"📅 Дата регистрации – {user.register_time.strftime('%d/%m/%Y')}\n" \
@@ -489,6 +494,8 @@ class Utils:
         await bot.send_message(chat_id, profile_info, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         
         active_sub = await user.get_active_sub()
+
+        kb = []
         
         if active_sub:
             if not admin:
@@ -500,8 +507,7 @@ class Utils:
             await bot.send_message(chat_id, "<b>🔐 Активная подписка</b>\n\n"
                                             f"✅ <b>{active_sub.plan}</b>\n"
                                             f"<b>├ </b>📆 Начинается <b>{active_sub.datetime_start.strftime('%d/%m/%y %H:%M')}</b>\n"
-                                            f"<b>└ </b>⏳ Заканчивается <b>{active_sub.datetime_end.strftime('%d/%m/%y %H:%M')}</b>\n\n"
-                                            f"{('🔧 Вы – <b>администратор!</b>' if await user.is_admin else '')}", 
+                                            f"<b>└ </b>⏳ Заканчивается <b>{active_sub.datetime_end.strftime('%d/%m/%y %H:%M')}</b>\n",
                                             reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         else:
             if not admin:
@@ -511,6 +517,7 @@ class Utils:
 
             await bot.send_message(chat_id, "<b>У вас нет активных подписок.</b>", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         
+        '''
         all_subs = await user.get_all_subs()
             
         if all_subs:
@@ -530,7 +537,7 @@ class Utils:
                     prev_subs = ''.join(prev_subs)
 
                     await bot.send_message(chat_id, text=prev_subs)
-        
+        '''        
 
 class Admin:
     @staticmethod
@@ -579,6 +586,20 @@ class Admin:
         logger.info(f'user {user.id} balance has been updated by +${amount}')
 
     @staticmethod
+    async def set_balance(user: User, amount: float):
+        # проверить на наличие пользователя
+        if not user:
+            logger.error(f'user {user.id} not found.')
+            return
+
+        user.balance = amount
+
+        await UserService.upsert(user)
+        await bot.send_message(user.id, f"💰 Ваш баланс успешно обновлен на ${amount}")
+
+        logger.info(f'user {user.id} balance has been set to ${amount}')
+
+    @staticmethod
     @dp.message(Command(commands=["login"]))
     @admin_required
     async def command_login(message: types.Message, **kwargs):
@@ -600,6 +621,21 @@ class Admin:
         await message.answer(f"Баланс пользователя {user_id} успешно пополнен на ${amount}")
 
     @staticmethod
+    @dp.message(Command(commands=["set_balance"]))
+    @admin_required
+    async def command_set_balance(message: types.Message, **kwargs):
+        user_id = int(message.text.split(" ")[1])
+        amount = float(message.text.split(" ")[2])
+
+        user = await UserService.get(user_id)
+        if not user:
+            await message.answer("Пользователь не найден.")
+            return
+
+        await Admin.set_balance(user, amount)
+        await message.answer(f"Баланс пользователя {user_id} успешно обновлен на ${amount}")
+
+    @staticmethod
     @dp.message(Command(commands=["profile"]))
     @admin_required
     async def command_profile(message: types.Message, **kwargs):
@@ -613,3 +649,31 @@ class Admin:
         await message.answer(f"Вот профиль пользователя <code>{user_id}</code>")
 
         await Utils.render_profile(user, chat_id=message.chat.id, admin=True)
+
+    @staticmethod
+    @dp.message(Command(commands=["ban"]))
+    @admin_required
+    async def command_ban(message: types.Message, **kwargs):
+        user_id = int(message.text.split(" ")[1])
+
+        user = await UserService.get(user_id)
+        if not user:
+            await message.answer("Пользователь не найден.")
+            return
+
+        await UserService.ban_user(user_id)
+        await message.answer(f"Пользователь {user_id} забанен.")
+
+    @staticmethod
+    @dp.message(Command(commands=["unban"]))
+    @admin_required
+    async def command_unban(message: types.Message, **kwargs):
+        user_id = int(message.text.split(" ")[1])
+
+        user = await UserService.get(user_id)
+        if not user:
+            await message.answer("Пользователь не найден.")
+            return
+
+        await UserService.unban_user(user_id)
+        await message.answer(f"Пользователь {user_id} разбанен.")

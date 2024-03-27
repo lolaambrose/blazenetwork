@@ -1,7 +1,7 @@
 ﻿from datetime import datetime
 from inspect import getabsfile
 from pyxui import XUI, xui
-from pyxui.errors import BadLogin
+from pyxui.errors import BadLogin, NotFound
 from aiogram.types import Message
 from urllib.parse import urlparse
 from pyxui.config_gen import config_generator
@@ -9,6 +9,7 @@ from pyxui.config_gen import config_generator
 import asyncio
 import json
 import aiocron
+from requests import HTTPError
 
 from database import Subscription, User
 from logger import logger
@@ -70,10 +71,13 @@ async def upsert_client(expire_time: datetime, user: User, enable: bool, limit_i
         if not is_logged_in:
             continue
         try:
-            client = await asyncio.to_thread(xui.get_client, 
-                                        inbound_id=int(2),
-                                        email=str(user.id)
-                                        )
+            try:
+                client = await asyncio.to_thread(xui.get_client, 
+                                                inbound_id=int(2),
+                                                email=str(user.id)
+                                                )
+            except NotFound:
+                client = None
             if client is not None:
                 await asyncio.to_thread(xui.update_client,
                                         inbound_id=int(2),

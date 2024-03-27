@@ -23,7 +23,7 @@ def send_test_request():
         "url_callback": MERCHANT_CALLBACK,
         "network": "eth",
         "status": "paid",
-        "order_id": "6113190687"
+        "order_id": "6624604854"
     }
 
     # Генерация подписи для запроса

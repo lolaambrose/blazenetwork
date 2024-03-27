@@ -137,6 +137,18 @@ class UserService():
         users = await db.users.find().to_list(None)
         return [User(**user) for user in users]
 
+    @staticmethod
+    async def is_user_banned(id: int) -> bool:
+           return await db.banned_users.find_one({"id": id}) is not None
+
+    @staticmethod
+    async def ban_user(id: int) -> None:
+        await db.banned_users.insert_one({"id": id})
+
+    @staticmethod
+    async def unban_user(id: int) -> None:
+        await db.banned_users.delete_one({"id": id})
+
 class SubService():
     @staticmethod
     async def get(id: PyObjectId) -> Subscription:
