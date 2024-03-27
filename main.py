@@ -25,7 +25,7 @@ async def main():
     await telegram.main()
     
 if __name__ == '__main__':
-    elevate.elevate(show_console=True)
+    elevate.elevate()
     
     logger.info("Starting bot")
     
