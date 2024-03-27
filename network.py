@@ -8,6 +8,7 @@ from pyxui.config_gen import config_generator
 
 import asyncio
 import json
+import aiocron
 
 from database import Subscription, User
 from logger import logger
@@ -20,14 +21,6 @@ NODES = [
         "panel": "sanaei",
         "username": "admin",
         "password": "81mopege!1"
-    },
-    {
-        "id": "blazenetwork-us-dallas",
-        "name": "🇺🇸 Dallas, Texas",
-        "full_address": "http://drain.agency:1488/authorize.exe",
-        "panel": "sanaei",
-        "username": "admin",
-        "password": "W300C840dd!1"
     }
 ]
 
@@ -41,7 +34,7 @@ async def login_to_server(server_info):
         
         return xui, True, server_info
     except (BadLogin, Exception) as e:
-        logger.info(f"Failed to log in to {server_info['full_address']}: {e}")
+        logger.error(f"Failed to log in to {server_info['full_address']}: {e}")
         
         return xui, False, server_info
 
@@ -53,6 +46,10 @@ async def login_all():
     tasks = [login_to_server(server) for server in NODES]
     xui_instances = await asyncio.gather(*tasks)
 
+@aiocron.crontab('*/10 * * * *')    
+async def login_all_cron():
+    await login_all()   
+
 async def perform_action(action, *args, **kwargs):
     results = []
     
@@ -63,12 +60,12 @@ async def perform_action(action, *args, **kwargs):
             result = await asyncio.to_thread(getattr(xui, action), *args, **kwargs)
             results.append(result)
         except Exception as e:
-            logger.info(f"Error performing {action} on {xui.full_address}: {e}")
+            logger.error(f"error performing {action} on {xui.full_address}: {e}")
             results.append(None)
             
     return results
 
-async def upsert_client(expire_time: datetime, user: User, enable: bool, limit_ip=5, ):
+async def upsert_client(expire_time: datetime, user: User, enable: bool, limit_ip=5):
     for xui, is_logged_in, server_info in xui_instances:
         if not is_logged_in:
             continue
@@ -99,13 +96,13 @@ async def upsert_client(expire_time: datetime, user: User, enable: bool, limit_i
                                     enable=enable,
                                     flow='xtls-rprx-vision',
                                     limit_ip=int(5),
-                                    expire_time=int(sub.datetime_end.timestamp() * 1000),
+                                    expire_time=int(expire_time.timestamp() * 1000),
                                     total_gb=int(0),
                                     telegram_id="",
                                     subscription_id=""
                                     )
         except Exception as e:
-            logger.info(f"Error upserting client on {server_info['full_address']}: {e}")
+            logger.error(f"Error upserting client on {server_info['full_address']}: {e}")
 
 async def serverconfigs_by_user(inbound_id, email):
     results = []
@@ -132,7 +129,7 @@ async def serverconfig_by_user(inbound_id, email, server_info):
         
         return await get_client_config(xui, inbound_id, email, server_info)
     except Exception as e:
-        logger.info(f"Error retrieving client config: {e}")
+        logger.error(f"error retrieving client config: {e}")
     
     
 # Функция для извлечения конфигурации клиента по email
@@ -170,6 +167,6 @@ async def get_client_config(xui_instance, inbound_id, email, srv_info):
                         return config_generator("vless", config, data)
 
     except Exception as e:
-        logger.info(f"Error retrieving client config: {e}")
+        logger.error(f"error retrieving client config: {e}")
         
     return None

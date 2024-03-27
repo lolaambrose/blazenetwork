@@ -383,6 +383,7 @@ async def add_subscription(user: User, sub_data: dict) -> Subscription:
     
     return await SubService.upsert(new_sub)
 
+
 async def remove_subscription(sub: Subscription):
     user = await sub.get_user()
 
@@ -394,6 +395,21 @@ async def remove_subscription(sub: Subscription):
         await bot.send_message(user.id, f"❌ Ваша подписка <b>{sub.plan}</b> закончилась")
     else:
         logger.info(f"user {sub.user_id} not found.")
+
+
+
+async def add_balance(user: User, amount: float):
+    # проверить на наличие пользователя
+    if not user:
+        logger.error(f'user {user.id} not found.')
+        return
+
+    user.balance += amount
+
+    await UserService.upsert(user)
+    await bot.send_message(user.id, f"💰 Ваш баланс успешно пополнен на ${amount}.")
+
+    logger.info(f'user {user.id} balance has been updated by ${amount}.')
 
 """
     menu_deposit(query: types.CallbackQuery)
@@ -582,9 +598,9 @@ async def stop_expired_subs():
         logger.info(f"subscription for {sub.user_id} has been stopped.")
         
 
-@aiocron.crontab('*/10 * * * *')
 @dp.message(Command(commands=["login"]))
-async def login(message: types.Message):
+@admin_required
+async def login(message: types.Message, **kwargs):
     await network.login_all()
     
 

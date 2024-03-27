@@ -6,6 +6,7 @@ env3/
 .venv/
 .venv2/
 .venv3/
+.vscode/
 
 # Ignore cache files
 __pycache__/

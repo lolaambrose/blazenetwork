@@ -4,6 +4,10 @@ import hashlib
 import base64
 
 import config
+import database
+import telegram
+
+from logger import logger
 
 async def create_wallet(currency, network, order_id, url_callback=None, from_referral_code=None):
     data = {
@@ -50,3 +54,12 @@ async def init_user_wallets(user_id: str):
     new_wallets.append(await create_wallet("USDT", "tron", user_id))
 
     return new_wallets
+
+async def process_payment(user_id: int, amount: float):
+    user = await database.UserService.get(user_id)
+    
+    if not user:
+        logger.error(f"user not found: {user_id}")
+        return
+    
+    await telegram.add_balance(user, amount)
