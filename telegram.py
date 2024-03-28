@@ -564,6 +564,10 @@ class Admin:
 
         # Если пользователь найден, обновляем его статус
         if user:
+            sub.datetime_end = datetime.now() - timedelta(days=1)
+
+            await SubService.upsert(sub)
+
             await network.upsert_client(datetime.now(), user, False)
             logger.info(f"user {user.id}'s subscription has been stopped.")
             
@@ -677,3 +681,54 @@ class Admin:
 
         await UserService.unban_user(user_id)
         await message.answer(f"Пользователь {user_id} разбанен.")
+
+    @staticmethod
+    @dp.message(Command(commands=["add_sub"]))
+    @admin_required
+    async def command_add_sub(message: types.Message, **kwargs):
+        # команда должна вызываться /add_sub <user_id> <id>
+        user_id = int(message.text.split(" ")[1])
+        id = message.text.split(" ")[2]
+
+        user = await UserService.get(user_id)
+        if not user:
+            await message.answer("Пользователь не найден.")
+            return
+
+        if not any(sub["id"] == id for sub in SUBSCRIPTIONS):
+            await message.answer("Подписка не найдена по ID.")
+            return
+        
+        sub_data = {
+            "name": [sub["name"] for sub in SUBSCRIPTIONS if sub["id"] == id][0],
+            "id": id,
+            "price": [sub["price"] for sub in SUBSCRIPTIONS if sub["id"] == id][0],
+            "duration": [sub["duration"] for sub in SUBSCRIPTIONS if sub["id"] == id][0]
+        }
+
+        name = sub_data["name"]
+
+        await Admin.add_subscription(user, sub_data)
+        await message.answer(f"Подписка <b>{name}</b> успешно добавлена для ID <code>{user_id}</code>.")
+        logger.info(f"subscription {id} added for {user.id}") 
+
+    @staticmethod
+    @dp.message(Command(commands=["remove_sub"]))
+    @admin_required
+    async def command_remove_sub(message: types.Message, **kwargs):
+        # команда должна вызываться /remove_sub <user_id>
+        user_id = int(message.text.split(" ")[1])
+
+        user = await UserService.get(user_id)
+        if not user:
+            await message.answer("Пользователь не найден.")
+            return
+
+        sub = await user.get_active_sub()
+        if not sub:
+            await message.answer("У пользователя нет активной подписки.")
+            return
+    
+        await Admin.remove_subscription(sub)
+        await message.answer(f"Подписка успешно удалена для ID <code>{user_id}</code>.")
+        logger.info(f"subscription removed for {user.id}")

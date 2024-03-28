@@ -79,6 +79,13 @@ class User(BaseModel):
         wallet["user_id"] = self.id
         return await WalletService.upsert(wallet)
 
+    async def add_subscription(self, sub: 'Subscription') -> 'Subscription':
+        sub.user_id = self.id
+        return await SubService.upsert(sub)
+
+    async def remove_subscription(self, sub: 'Subscription') -> None:
+        await db.subscriptions.delete_one({"_id": sub.id})
+
     @property
     async def is_admin(self) -> bool:
         return self.id in config.TELEGRAM_ADMINS
