@@ -581,7 +581,7 @@ class Admin:
         user.balance += amount
 
         await UserService.upsert(user)
-        await bot.send_message(user.id, f"💰 Ваш баланс успешно пополнен на ${amount}")
+        await bot.send_message(user.id, f"💰 Ваш баланс успешно пополнен на <b>${amount}</b>")
 
         logger.info(f'user {user.id} balance has been updated by +${amount}')
 
@@ -595,7 +595,7 @@ class Admin:
         user.balance = amount
 
         await UserService.upsert(user)
-        await bot.send_message(user.id, f"💰 Ваш баланс успешно обновлен на ${amount}")
+        await bot.send_message(user.id, f"💰 Ваш баланс успешно обновлен на <b>${amount}</b>")
 
         logger.info(f'user {user.id} balance has been set to ${amount}')
 

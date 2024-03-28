@@ -62,4 +62,4 @@ async def process_payment(user_id: int, amount: float):
         logger.error(f"user not found: {user_id}")
         return
     
-    await telegram.add_balance(user, amount)
+    await telegram.Admin.add_balance(user, amount)

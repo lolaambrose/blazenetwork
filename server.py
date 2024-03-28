@@ -32,9 +32,9 @@ def check_signature(data: dict) -> None | Exception:
 
 async def handle_callback(request):
     # Проверка IP адреса
-    #if request.remote != config.MERCHANT_CALLBACK_ORIGIN:
-    #    logger.error(f'callback not allowed from IP: {request.remote}')
-    #    return web.json_response({'error': 'Not allowed'}, status=403)
+    if request.headers.get('X-Real-IP') != config.MERCHANT_CALLBACK_ORIGIN:
+        logger.error(f'callback not allowed from IP: {request.headers.get("X-Real-IP")}')
+        return web.json_response({'error': 'Not allowed'}, status=403)
 
     # Получение JSON данных из запроса
     data = await request.json()
