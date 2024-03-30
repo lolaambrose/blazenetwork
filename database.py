@@ -59,6 +59,8 @@ class User(BaseModel):
     register_time: datetime = datetime.utcnow()
     balance: float = 0.00
     uuid: str = str(uuid.uuid4())
+    referral_id: int = 0
+    referral_days: int = 0
 
     async def get_active_sub(self) -> Optional['Subscription']:
         subscriptions = await db.subscriptions.find({"user_id": self.id}).to_list(None)
@@ -78,6 +80,9 @@ class User(BaseModel):
     async def upsert_wallet(self, wallet: dict) -> dict:
         wallet["user_id"] = self.id
         return await WalletService.upsert(wallet)
+
+    async def get_referral_count(self) -> int:
+        return await db.users.count_documents({"referral_id": self.id})
 
     async def add_subscription(self, sub: 'Subscription') -> 'Subscription':
         sub.user_id = self.id
@@ -137,7 +142,7 @@ class UserService():
     async def upsert(user: User) -> User:
         result = await db.users.update_one({"id": user.id}, {"$set": user.dict()}, upsert = True)
         if result:
-            return await UserService.get(result.upserted_id)
+            return await UserService.get(user.id)
 
     @staticmethod
     async def get_all() -> List[User]:
@@ -155,6 +160,27 @@ class UserService():
     @staticmethod
     async def unban_user(id: int) -> None:
         await db.banned_users.delete_one({"id": id})
+
+    @staticmethod
+    async def init_user(id: int, uuid: str, register_time: datetime, referral_id: int=0, balance: int=0) -> User:
+        if referral_id != 0:
+            if not await UserService.get(referral_id):
+                logger.error(f"User {referral_id} is not found")
+                referral_id = 0
+
+        if referral_id == id:
+            logger.error(f"User {id} tried to set himself as a referral")
+            referral_id = 0
+
+        # здесь еще обработка купонов и прочего
+
+        user = await UserService.upsert(
+            User(id=id, 
+                 register_time=register_time, 
+                 balance=balance, 
+                 uuid=uuid, 
+                 referral_id=referral_id))
+        return user
 
 class SubService():
     @staticmethod
@@ -187,6 +213,45 @@ class SubService():
 
         # Преобразуем данные подписок в объекты Subscription и возвращаем их
         return [Subscription(**sub) for sub in sub_data]
+
+class CouponService():
+    @staticmethod
+    async def get_valid(id: str, user_id: int) -> dict:
+        coupon = await db.coupons.find_one({"id": id})
+
+        if not coupon:
+            logger.info(f"tried to activate coupon {id} that does not exist")
+            return
+
+        if coupon["limit"] == 0:
+            logger.info(f"tried to activate coupon {id} with limit == 0")
+            return
+        
+        if coupon["expire_date"] != 0:
+            if coupon["expire_date"] < datetime.now():
+                logger.info(f"tried to activate expired coupon {id}")
+                return
+
+        if coupon["activated_by"] and user_id in coupon["activated_by"]:
+            logger.info(f"tried to activate coupon {id} that was already activated by user {user_id}")
+            return
+
+        return coupon
+
+    @staticmethod
+    async def activate(id: str, user_id: int) -> None:
+        coupon = await CouponService.get_valid(id, user_id)
+
+        if not coupon:
+            return
+
+        if coupon["limit"] > 0:
+            coupon["limit"] -= 1
+
+        # Update the coupon to include the user ID in the activated_by array
+        coupon["activated_by"].append(user_id)
+
+        await db.coupons.update_one({"id": id}, {"$set": coupon})
         
         
 async def initialize_subscriptions():
@@ -212,4 +277,22 @@ async def initialize_subscriptions():
             "cost": 88.0,
             "plan": "test 2"
             })
+
+async def initialize_coupons():
+    if await db.coupons.find_one():
+        return
+
+    await db.coupons.insert_one({
+            "id": "TEST1000",
+            "limit": 1000,
+            "expire_date": datetime(day=13, month=4, year=2021),
+            "value": 30.0
+        })
+
+    await db.coupons.insert_one({
+        "id": "TESTINFINITE",
+        "limit": -1,
+        "expire_date": 0,
+        "value": 30.0
+    })
         

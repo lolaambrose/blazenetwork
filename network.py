@@ -39,6 +39,10 @@ async def login_to_server(server_info):
         
         return xui, False, server_info
 
+# нужно реализовать функцию которая аннулирует подписки 
+# всем пользователям, которые заходили с таджикистанских IP-адресов на всех инстансах XUI
+
+
 async def login_all():
     logger.info(f"start...")
     

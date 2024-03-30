@@ -14,7 +14,7 @@ import aiocron
 import qrcode
 import io
 
-from database import SubService, WalletService, User, Subscription, UserService
+from database import SubService, WalletService, User, Subscription, UserService, CouponService
 from logger import logger
 
 import config
@@ -31,16 +31,20 @@ SUBSCRIPTIONS = [
         "name": "VPN на 1 месяц",
         "id": "1_month",
         "price": 15.00,
-        "duration": 30
+        "duration": 30,
+        "referral_bonus": 3
         },
 
         {
         "name": "VPN на 3 месяца",
         "id": "3_month",
         "price": 45.00,
-        "duration": 90
+        "duration": 90,
+        "referral_bonus": 8
         }
 ]
+
+BONUS_REFERRAL_DAYS = 3
 
 def admin_required(func):
     async def wrapped(message: types.Message, *args, **kwargs):
@@ -63,6 +67,8 @@ def admin_required(func):
 async def main():
     global bot
     bot = Bot(config.TELEGRAM_TOKEN, parse_mode=ParseMode.HTML)
+
+    await database.initialize_coupons()
     
     await dp.start_polling(bot) 
    
@@ -84,15 +90,42 @@ async def start(message: types.Message):
 
     user = await UserService.get(message.chat.id)
     
+    arg = message.text.split(" ")[1] if len(message.text.split(" ")) > 1 else None
+
+    referral_id = None
+    coupon = None
+
+    if arg:
+        if arg.isdigit():
+            referral_id = int(arg)
+            logger.info(f"referral: {referral_id}")
+        else:
+            coupon = arg
+            logger.info(f"coupon: {coupon}")
+    
     if not user:
-        user = User(id = message.chat.id, uuid = str(uuid.uuid4()), register_time = datetime.utcnow())
-        await UserService.upsert(user)
+        balance = 0
+        if coupon:
+            coupon_data = await CouponService.get_valid(coupon, message.chat.id)
+            if coupon_data:
+                balance = coupon_data["value"]
+                await CouponService.activate(coupon, message.chat.id)
+            else:
+                await bot.send_message(message.chat.id, f"<b>Купон <code>{coupon}</code> не найден или уже недействителен.</b>")
+
+        user = await UserService.init_user(message.chat.id, str(uuid.uuid4()), datetime.now(), referral_id, balance=balance)
+    else:
+        if coupon:
+            coupon_data = await CouponService.get_valid(coupon, user.id)
+            if coupon_data:
+                await Admin.add_balance(user, coupon_data["value"])
+                await CouponService.activate(coupon, user.id)
+            else:
+                await bot.send_message(message.chat.id, f"<b>Купон <code>{coupon}</code> не найден или уже недействителен.</b>")
 
     kb = [
             [KeyboardButton(text="ℹ️ Информация"), KeyboardButton(text="👤 Мой профиль"),]
          ]
-
-    all_subs = await user.get_all_subs()
 
     active_sub = await user.get_active_sub()
 
@@ -178,6 +211,10 @@ async def action_connect(query: types.CallbackQuery):
             continue
 
         config = await network.serverconfig_by_user(2, user.id, serverinfo)
+
+        if not config:
+            bot.send_message(query.from_user.id, "<b>Ошибка при получении конфигурации сервера.</b>"
+                            "\n\nОбратитесь к поддержке бота, чтобы решить эту проблему")
         
         # Генерируем QR-код
         qr = qrcode.QRCode(
@@ -204,6 +241,31 @@ async def action_connect(query: types.CallbackQuery):
             await bot.send_sticker(query.from_user.id, sticker=file)
             
         await bot.answer_callback_query(query.id)
+
+@dp.callback_query(lambda query: query.data == "menu_invite")
+async def menu_invite(query: types.CallbackQuery):
+    await bot.send_chat_action(query.from_user.id, 'typing')
+
+    user = await UserService.get(query.from_user.id)
+
+    if not user:
+        await bot.send_message(query.from_user.id, "<b>Пользователь не найден.</b>")
+        return
+
+    bot_username = (await bot.get_me()).username
+    referral_link = f"https://t.me/{bot_username}?start={user.id}"
+
+    referral_description = "🤝 Пригласите друга и получите <b>бонусные дни</b> подписки!\n\n" \
+                            "🔗 Отправьте вашу реферальную ссылку друзьям:\n" \
+                            f"<code>{referral_link}</code>\n\n" \
+
+    referral_description += "Если ваш реферал купит подписку, то вы получите:\n"
+    for sub in SUBSCRIPTIONS:
+        referral_description += f"• за <b>{sub['name']}</b> – <code>{sub['referral_bonus']}</code> бонусных дней!\n"
+
+    await bot.send_message(query.from_user.id, referral_description)
+    await bot.answer_callback_query(query.id)
+
 
 
 """
@@ -244,6 +306,50 @@ async def menu_buy(argument):
     await message.answer("<b>Доступные подписки: </b>", reply_markup=keyboard)
 
 
+@dp.callback_query(lambda query: query.data.startswith("menu_prolongate_"))
+async def action_prolongate(query: types.CallbackQuery):
+    await bot.send_chat_action(query.message.chat.id, 'typing')
+    await bot.answer_callback_query(query.id)
+
+    subscription = "_".join(query.data.split("_")[2:])
+
+    user = await UserService.get(query.from_user.id)
+
+    if not user:
+        await query.message.answer("<b>Пользователь не найден.</b>")
+        return
+
+    user_sub = await user.get_active_sub()
+    sub_data = None
+
+    if not user_sub:
+        await query.message.answer("<b>У вас нет активной подписки.</b>")
+        return
+
+    for sub in SUBSCRIPTIONS:
+        if sub['id'] == subscription:
+            sub_data = sub
+            break
+
+    if not sub_data:
+        query.message.answer("<b>Подписка не найдена.</b>")
+
+    user.balance -= sub_data['price']
+    user_sub.datetime_end += timedelta(days=sub_data['duration'])
+    await SubService.upsert(user_sub)
+    await UserService.upsert(user)
+
+    if user.referral_id != 0:
+        referrer = await UserService.get(user.referral_id)
+
+        if not referrer:
+            logger.error(f"referrer {user.referral_id} not found.")
+            return
+
+        await Admin.add_referal_days(referrer, sub_data["referral_bonus"])
+
+    await query.message.answer(f"✅ Подписка <b>{sub_data['name']}</b> успешно продлена на <code>{sub_data['duration']}</code> дней.")
+
 """
     handle_buy_callback(query: types.CallbackQuery)
 
@@ -277,7 +383,12 @@ async def action_buy_callback(query: types.CallbackQuery):
     user_sub = await user.get_active_sub()
     
     if user_sub:
-        await query.message.answer("<b>У вас уже есть активная подписка.</b>")
+        kb = [InlineKeyboardButton(text="✅ Да, продлить", callback_data=f"menu_prolongate_{subscription}")]
+        days = sub_data["duration"]
+
+        await query.message.answer("<b>У вас уже есть активная подписка.</b>\n\n" \
+                                   f"Хотите продлить её на <code>{days}</code> дней?",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[kb]))
         return
 
     if user.balance < sub_data['price']:
@@ -327,10 +438,6 @@ async def action_confirm_buy(query: types.CallbackQuery):
         return
     
     user_sub = await user.get_active_sub()
-    
-    if user_sub:
-        await query.message.answer("<b>У вас уже есть активная подписка.</b>")
-        return
 
     if not sub_data:
         await query.message.answer("<b>Подписка не найдена.</b>")
@@ -340,9 +447,18 @@ async def action_confirm_buy(query: types.CallbackQuery):
 
     result_sub = await Admin.add_subscription(user, sub_data)
 
+    if user.referral_id != 0:
+        referrer = await UserService.get(user.referral_id)
+
+        if not referrer:
+            logger.error(f"referrer {user.referral_id} not found.")
+            return
+
+        await Admin.add_referal_days(referrer, sub_data["referral_bonus"])
+
     await network.upsert_client(result_sub.datetime_end, user, True)
     
-    await start(query.message) 
+    await start(None) 
 
 """
     menu_deposit(query: types.CallbackQuery)
@@ -439,6 +555,7 @@ async def menu_information(message: types.Message):
                          "Свяжитесь с нашей поддержкой для получения дополнительной информации.", reply_markup=markup)
 
 class Utils:
+    ''' need to fix this
     @staticmethod
     @aiocron.crontab('0 0 * * *')
     async def stop_expired_subs():
@@ -452,6 +569,7 @@ class Utils:
         for sub in expired_subs:
             await Admin.remove_subscription(sub)
             logger.info(f"subscription for {sub.user_id} has been stopped.")    
+    '''
 
     @staticmethod
     @aiocron.crontab('0 15 * * *')
@@ -477,12 +595,16 @@ class Utils:
 
         if not admin:
             kb = [
-                [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="menu_deposit")]
+                [InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="menu_deposit")],
+                [InlineKeyboardButton(text="🤝 Пригласить друга", callback_data="menu_invite")]
             ]
 
-        profile_info =  f"👤 <b>Ваш профиль</b>\n" \
+        profile_info =  f"<b>👤 Ваш профиль</b>\n" \
                         f"<b>├ ID –</b> <code>{user.id}</code>\n" \
-                        f"<b>└ Баланс –</b> ${user.balance}\n\n" \
+                        f"<b>└ Баланс –</b> <code>${user.balance}</code>\n\n" \
+                        f"<b>🫂 Реферальная система</b>\n" \
+                        f"<b>├</b> Привлечено рефералов – <code>{await user.get_referral_count()}</code>\n" \
+                        f"<b>└</b> Получено бонусных дней – <code>{user.referral_days}</code>\n\n" \
                         f"{('🔧 Вы – <b>администратор!</b>' if await user.is_admin else '')}" 
 
         if admin:                    
@@ -506,8 +628,8 @@ class Utils:
             # Выводим информацию о подписках
             await bot.send_message(chat_id, "<b>🔐 Активная подписка</b>\n\n"
                                             f"✅ <b>{active_sub.plan}</b>\n"
-                                            f"<b>├ </b>📆 Начинается <b>{active_sub.datetime_start.strftime('%d/%m/%y %H:%M')}</b>\n"
-                                            f"<b>└ </b>⏳ Заканчивается <b>{active_sub.datetime_end.strftime('%d/%m/%y %H:%M')}</b>\n",
+                                            f"<b>├ </b>📆 Начинается <b>{active_sub.datetime_start.strftime('%d/%m/%Y %H:%M')}</b>\n"
+                                            f"<b>└ </b>⏳ Заканчивается <b>{active_sub.datetime_end.strftime('%d/%m/%Y %H:%M')}</b>\n",
                                             reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         else:
             if not admin:
@@ -529,8 +651,8 @@ class Utils:
                         continue
 
                     prev_subs.append(f"- <b>{sub.plan}</b>\n")
-                    prev_subs.append(f"<b>├ </b>📆 с <b>{sub.datetime_start.strftime('%d/%m/%y %H:%M')}</b>\n")
-                    prev_subs.append(f"<b>└ </b>⏳ до <b>{sub.datetime_end.strftime('%d/%m/%y %H:%M')}</b>\n")
+                    prev_subs.append(f"<b>├ </b>📆 с <b>{sub.datetime_start.strftime('%d/%m/%Y %H:%M')}</b>\n")
+                    prev_subs.append(f"<b>└ </b>⏳ до <b>{sub.datetime_end.strftime('%d/%m/%Y %H:%M')}</b>\n")
 
                 if prev_subs:
                     prev_subs.insert(0,"<b>⌛ Прошлые подписки</b> (последние 5)\n\n")
@@ -541,7 +663,27 @@ class Utils:
 
 class Admin:
     @staticmethod
-    async def add_subscription(user: User, sub_data: dict) -> Subscription:
+    async def add_referal_days(user: User, days: int):
+        user.referral_days += days
+
+        sub = await user.get_active_sub()
+
+        if not sub:
+            custom_sub = {
+                "name": "Бонусная подписка",
+                "price": 0.00,
+                "duration": days
+            }
+            await Admin.add_subscription(user, custom_sub, notify=False)
+        else:
+            sub.datetime_end += timedelta(days=days)
+            await SubService.upsert(sub)
+
+        await UserService.upsert(user)
+        await bot.send_message(user.id, f"🎉 Вам начислено <b>{days}</b> бонусных дней за реферала.")
+
+    @staticmethod
+    async def add_subscription(user: User, sub_data: dict, notify: bool = True) -> Subscription:
         user_sub = await user.get_active_sub()
         
         if user_sub:
@@ -553,10 +695,13 @@ class Admin:
             datetime_end=datetime.utcnow() + timedelta(days=sub_data["duration"]),
             plan=sub_data["name"],
             cost=sub_data["price"])
-
-        await bot.send_message(user.id, f"✅ Подписка <b>{sub_data['name']}</b> успешно куплена\n")
         
-        return await SubService.upsert(new_sub)
+        result =  await SubService.upsert(new_sub)
+
+        if notify:
+            await bot.send_message(user.id, f"✅ Подписка <b>{sub_data['name']}</b> успешно куплена\n")
+
+        return result
 
     @staticmethod
     async def remove_subscription(sub: Subscription):

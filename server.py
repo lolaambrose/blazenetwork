@@ -1,3 +1,9 @@
+'''
+    TO-DO: 
+    - fix notify_expire_subs()
+    - implement SUBSCRIPTION and bonuses fetch from database & other settings
+'''
+
 import asyncio
 import hmac
 import json
