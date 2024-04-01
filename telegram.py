@@ -49,9 +49,12 @@ BONUS_REFERRAL_DAYS = 3
 def admin_required(func):
     async def wrapped(message: types.Message, *args, **kwargs):
         user = await UserService.get(message.from_user.id)
-        if not await user.is_admin:
-            await message.answer("Вы не администратор!")
-            return 
+
+        if user:
+            if not await user.is_admin:
+                await message.answer("Вы не администратор!")
+                return 
+            
         return await func(message, *args, **kwargs)
     return wrapped
 
@@ -68,7 +71,7 @@ async def main():
     global bot
     bot = Bot(config.TELEGRAM_TOKEN, parse_mode=ParseMode.HTML)
 
-    await database.initialize_coupons()
+    #await database.initialize_coupons()
     
     await dp.start_polling(bot) 
    
@@ -90,7 +93,10 @@ async def start(message: types.Message):
 
     user = await UserService.get(message.chat.id)
     
-    arg = message.text.split(" ")[1] if len(message.text.split(" ")) > 1 else None
+    if message.text.startswith("/start"):
+        arg = message.text.split(" ")[1] if len(message.text.split(" ")) > 1 else None
+    else:
+        arg = None
 
     referral_id = None
     coupon = None
@@ -167,11 +173,11 @@ async def menu_subscription(message: types.Message):
     
     if not active_sub:  
         await message.answer("<b>У вас нет активных подписок.</b>")
-        await network.upsert_client(datetime.now(), user, False)
+        #await network.upsert_client(datetime.now(), user, False)
         await start(message)
         return
     
-    await network.upsert_client(active_sub.datetime_end, user, True)
+    #await network.upsert_client(active_sub.datetime_end, user, True)
     
     kb = []
             
@@ -335,7 +341,10 @@ async def action_prolongate(query: types.CallbackQuery):
         query.message.answer("<b>Подписка не найдена.</b>")
 
     user.balance -= sub_data['price']
+    user.total_spent += sub_data['price']
+
     user_sub.datetime_end += timedelta(days=sub_data['duration'])
+
     await SubService.upsert(user_sub)
     await UserService.upsert(user)
 
@@ -443,6 +452,7 @@ async def action_confirm_buy(query: types.CallbackQuery):
         await query.message.answer("<b>Подписка не найдена.</b>")
 
     user.balance -= sub_data['price']
+    user.total_spent += sub_data['price']
     await UserService.upsert(user)
 
     result_sub = await Admin.add_subscription(user, sub_data)
@@ -456,10 +466,9 @@ async def action_confirm_buy(query: types.CallbackQuery):
 
         await Admin.add_referal_days(referrer, sub_data["referral_bonus"])
 
-    await network.upsert_client(result_sub.datetime_end, user, True)
+    #await network.upsert_client(result_sub.datetime_end, user, True)
     
-    await start(None) 
-
+    await start(message=query.message) 
 """
     menu_deposit(query: types.CallbackQuery)
 
@@ -607,7 +616,7 @@ class Utils:
                         f"<b>└</b> Получено бонусных дней – <code>{user.referral_days}</code>\n\n" \
                         f"{('🔧 Вы – <b>администратор!</b>' if await user.is_admin else '')}" 
 
-        if admin:                    
+        if admin or user.is_admin:                    
             profile_info += f"📅 Дата регистрации – {user.register_time.strftime('%d/%m/%Y')}\n" \
                             f"🆔 UUID – {str(user.uuid)}\n" \
                             f"💸 Потраченная сумма – ${await user.total_spent}"
@@ -713,7 +722,6 @@ class Admin:
 
             await SubService.upsert(sub)
 
-            await network.upsert_client(datetime.now(), user, False)
             logger.info(f"user {user.id}'s subscription has been stopped.")
             
             await bot.send_message(user.id, f"❌ Ваша подписка <b>{sub.plan}</b> закончилась")

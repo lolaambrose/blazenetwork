@@ -5,7 +5,6 @@
 '''
 
 import asyncio
-import hmac
 import json
 import hashlib
 import base64
@@ -14,7 +13,6 @@ from aiohttp import web
 import config
 import payments
 import network
-import database
 import telegram
 
 from logger import logger
@@ -64,7 +62,7 @@ async def on_startup(app):
     logger.info('Starting merchant callback server')
 
     await network.login_all()
-    await database.initialize_subscriptions()
+    #await database.initialize_subscriptions()
     asyncio.create_task(telegram.main())
 
 app.on_startup.append(on_startup)

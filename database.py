@@ -5,10 +5,11 @@ from typing import List, Optional
 from datetime import datetime, timedelta, timezone
 from bson import ObjectId
 
+import uuid
+
 from logger import logger
 
 import config
-import uuid
 
 db_client = motor_asyncio.AsyncIOMotorClient(config.MONGODB_URI)
 db = db_client["blazevpn"]
@@ -61,6 +62,7 @@ class User(BaseModel):
     uuid: str = str(uuid.uuid4())
     referral_id: int = 0
     referral_days: int = 0
+    total_spent: float = 0.00
 
     async def get_active_sub(self) -> Optional['Subscription']:
         subscriptions = await db.subscriptions.find({"user_id": self.id}).to_list(None)
@@ -94,14 +96,6 @@ class User(BaseModel):
     @property
     async def is_admin(self) -> bool:
         return self.id in config.TELEGRAM_ADMINS
-
-    @property
-    async def total_spent(self) -> float:
-        subscriptions = await self.get_all_subs()
-        total_spent = 0.0
-        for sub in subscriptions:
-            total_spent += sub.cost
-        return total_spent
 
 class Subscription(BaseModel):
     id: PyObjectId = Field(default_factory=PyObjectId, alias='_id')
@@ -172,8 +166,6 @@ class UserService():
             logger.error(f"User {id} tried to set himself as a referral")
             referral_id = 0
 
-        # здесь еще обработка купонов и прочего
-
         user = await UserService.upsert(
             User(id=id, 
                  register_time=register_time, 
@@ -194,8 +186,17 @@ class SubService():
     @staticmethod
     async def upsert(sub: Subscription) -> Subscription:
         result = await db.subscriptions.update_one({"_id": sub.id}, {"$set": sub.dict(by_alias=True)}, upsert = True)
-        if result:
-            return await SubService.get(result.upserted_id)
+
+        if not result:
+            return
+    
+        is_sub_active = sub.active
+        user = await sub.get_user()
+
+        from network import upsert_client
+        await upsert_client(sub.datetime_end, user, is_sub_active)
+
+        return await SubService.get(result.upserted_id)
 
     @staticmethod
     async def get_by_end_date(end_date: datetime) -> List[Subscription]:
