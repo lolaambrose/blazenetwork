@@ -617,9 +617,9 @@ class Utils:
                         f"{('🔧 Вы – <b>администратор!</b>' if await user.is_admin else '')}" 
 
         if admin or user.is_admin:                    
-            profile_info += f"📅 Дата регистрации – {user.register_time.strftime('%d/%m/%Y')}\n" \
+            profile_info += f"\n\n📅 Дата регистрации – {user.register_time.strftime('%d/%m/%Y')}\n" \
                             f"🆔 UUID – {str(user.uuid)}\n" \
-                            f"💸 Потраченная сумма – ${await user.total_spent}"
+                            f"💸 Потраченная сумма – ${user.total_spent}"
 
         # Выводим информацию о пользователе
         await bot.send_message(chat_id, profile_info, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
