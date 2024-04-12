@@ -26,7 +26,7 @@ jobs:
           sudo apt install nginx -y
 
           # Configure real_ip for NGINX
-          sudo cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup
+          sudo cp /etc/nginx/nginx.conf.backup /etc/nginx/nginx.conf
           sudo sed -i '/http {/a \    # Cloudflare IP Ranges' /etc/nginx/nginx.conf
           sudo sed -i '/http {/a \    set_real_ip_from 173.245.48.0/20;' /etc/nginx/nginx.conf
           sudo sed -i '/http {/a \    set_real_ip_from 103.21.244.0/22;' /etc/nginx/nginx.conf

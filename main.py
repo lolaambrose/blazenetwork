@@ -13,9 +13,9 @@ async def start_aiohttp_server(app):
     runner = AppRunner(app)
 
     await runner.setup()
-    site = TCPSite(runner, '0.0.0.0', 10000)
+    site = TCPSite(runner, '127.0.0.1', 10000)
 
-    logger.info('started aiohttp server on 0.0.0.0:10000')
+    logger.info('started aiohttp server!')
 
     await telegram.start_cron_jobs()
 
