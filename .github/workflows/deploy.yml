@@ -66,6 +66,7 @@ jobs:
           export MONGODB_URI=${{ secrets.MONGODB_URI }}
           export TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}
 
-          pm2 startOrRestart main.py --interpreter ./venv/bin/python --name blazenetworkbot
+          pm2 stop blazenetworkbot
+          pm2 start main.py --interpreter ./venv/bin/python --name blazenetworkbot
           pm2 save
           EOF
