@@ -53,7 +53,7 @@ async def handle_callback(request):
 
     return web.json_response({'status': 'success', 'message': 'Payment processed successfully'})
 
-app.router.add_post('/api/v1/merchant/callback', handle_callback)
+app.router.add_post('/v1/merchant/callback', handle_callback)
 
 async def main():
     return app

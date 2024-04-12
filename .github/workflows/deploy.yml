@@ -1,0 +1,33 @@
+name: Deploy to Production Server
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+      
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      
+      - name: Deploy to Production
+        run: |
+          ssh -o "StrictHostKeyChecking=no" root@146.190.225.169 << 'EOF'
+          cd /home/code/blazenetworkbot
+          git pull
+          python3 -m venv venv
+          source venv/bin/activate
+          pip install -r requirements.txt
+          npm install pm2@latest -g
+          export MONGODB_URI=${{ secrets.MONGODB_URI }}
+          export TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}
+          pm2 start main.py --interpreter ./venv/bin/python --name blazenetworkbot --watch
+          pm2 save
+          EOF
