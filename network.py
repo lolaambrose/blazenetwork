@@ -16,21 +16,13 @@ from logger import logger
 
 NODES = [
     {
-        "id": "blazenetwork-us-dallas",
-        "name": "🇺🇸 Dallas, Texas",
-        "full_address": "http://drain.agency:1488/authorize.exe",
+        "id": "blazenetwork-nl-amsterdam",
+        "name": "🇳🇱 Amsterdam",
+        "full_address": "http://178.128.244.10:10000/",
         "panel": "sanaei",
-        "username": "admin",
-        "password": "W300C840dd!1"
+        "username": "traumaeffect",
+        "password": "81Mopege!1"
     },
-    {
-        "id": "blazenetwork-us-dallas",
-        "name": "🇺🇸 Dallas, Texas",
-        "full_address": "http://drain.agency:14885/authorize.exe",
-        "panel": "sanaei",
-        "username": "admin",
-        "password": "W300C840dd!1"
-    }
 ]
 
 async def login_to_server(server_info):
