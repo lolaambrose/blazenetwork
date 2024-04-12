@@ -921,4 +921,4 @@ async def notify_expiring_subs():
 # Функции для старта cron задач
 async def start_cron_jobs():
     aiocron.crontab('*/5 * * * *', func=monitor_servers, start=True)
-    aiocron.crontab('* * * * *', func=notify_expiring_subs, start=True)
+    aiocron.crontab('0 15 * * *', func=notify_expiring_subs, start=True)

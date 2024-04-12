@@ -32,6 +32,8 @@ def check_signature(data: dict) -> None | Exception:
     return False
 
 async def handle_callback(request):
+    logger.info(f'callback request: {request}')
+
     # Проверка IP адреса
     if request.headers.get('X-Real-IP') != config.MERCHANT_CALLBACK_ORIGIN:
         logger.error(f'callback not allowed from IP: {request.headers.get("X-Real-IP")}')
