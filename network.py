@@ -24,12 +24,12 @@ NODES = [
         "password": "EJxqvqybi91w"
     },
     {
-        "id": "blazenetwork-uk-london",
-        "name": "🇬🇧 London",
-        "full_address": "http://london.blazenet.work:2053",
+        "id": "blazenetwork-de-frankfurt",
+        "name": "🇩🇪 Frankfurt",
+        "full_address": "http://frankfurt.blazenet.work:2053",
         "panel": "sanaei",
         "username": "admin",
-        "password": "0694S3o6ycAR"
+        "password": "YDTrQK3wmun9m1WDfT5"
     },
 ]
 
