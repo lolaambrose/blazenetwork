@@ -26,23 +26,24 @@ jobs:
           sudo apt install nginx -y
 
           # Configure real_ip for NGINX
-          echo -e '\n# Cloudflare IP Ranges' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 173.245.48.0/20;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 103.21.244.0/22;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 103.22.200.0/22;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 103.31.4.0/22;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 141.101.64.0/18;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 108.162.192.0/18;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 190.93.240.0/20;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 188.114.96.0/20;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 197.234.240.0/22;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 198.41.128.0/17;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 162.158.0.0/15;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 104.16.0.0/13;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 104.24.0.0/14;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 172.64.0.0/13;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'set_real_ip_from 131.0.72.0/22;' | sudo tee -a /etc/nginx/nginx.conf
-          echo 'real_ip_header X-Forwarded-For;' | sudo tee -a /etc/nginx/nginx.conf
+          sudo cp /etc/nginx/nginx.conf /etc/nginx/nginx.conf.backup
+          sudo sed -i '/http {/a \    # Cloudflare IP Ranges' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 173.245.48.0/20;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 103.21.244.0/22;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 103.22.200.0/22;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 103.31.4.0/22;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 141.101.64.0/18;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 108.162.192.0/18;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 190.93.240.0/20;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 188.114.96.0/20;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 197.234.240.0/22;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 198.41.128.0/17;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 162.158.0.0/15;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 104.16.0.0/13;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 104.24.0.0/14;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 172.64.0.0/13;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    set_real_ip_from 131.0.72.0/22;' /etc/nginx/nginx.conf
+          sudo sed -i '/http {/a \    real_ip_header X-Forwarded-For;' /etc/nginx/nginx.conf
 
           # Configure NGINX as reverse proxy
           echo "server {
