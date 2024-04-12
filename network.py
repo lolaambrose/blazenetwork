@@ -18,10 +18,10 @@ NODES = [
     {
         "id": "blazenetwork-nl-amsterdam",
         "name": "🇳🇱 Amsterdam",
-        "full_address": "http://amsterdam.blazenet.work:10000",
+        "full_address": "http://amsterdam.blazenet.work:2053",
         "panel": "sanaei",
-        "username": "traumaeffect",
-        "password": "81Mopege!1"
+        "username": "admin",
+        "password": "uI+P?83+s>3~7:V(u[k"
     },
 ]
 
