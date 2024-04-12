@@ -19,7 +19,7 @@ jobs:
       
       - name: Deploy to Production
         run: |
-          ssh -o "StrictHostKeyChecking=no" root@146.190.225.169 << 'EOF'
+          ssh -o "StrictHostKeyChecking=no" root@146.190.225.169 -p 50000 << 'EOF'
 
           # Update and install NGINX
           sudo apt update
