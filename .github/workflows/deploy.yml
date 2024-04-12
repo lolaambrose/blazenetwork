@@ -62,6 +62,6 @@ jobs:
           npm install pm2@latest -g
           export MONGODB_URI=${{ secrets.MONGODB_URI }}
           export TELEGRAM_TOKEN=${{ secrets.TELEGRAM_TOKEN }}
-          pm2 start main.py --interpreter ./venv/bin/python --name blazenetworkbot --watch
+          pm2 start main.py --interpreter ./venv/bin/python --name blazenetworkbot --watch -f
           pm2 save
           EOF
