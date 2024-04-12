@@ -20,6 +20,31 @@ jobs:
       - name: Deploy to Production
         run: |
           ssh -o "StrictHostKeyChecking=no" root@146.190.225.169 << 'EOF'
+
+          # Update and install NGINX
+          sudo apt update
+          sudo apt install nginx -y
+
+          # Configure NGINX as reverse proxy
+          echo "server {
+              listen 80;
+              server_name api.blazenet.work;
+
+              location / {
+                  proxy_pass http://localhost:10000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade \$http_upgrade;
+                  proxy_set_header Connection 'upgrade';
+                  proxy_set_header Host \$host;
+                  proxy_cache_bypass \$http_upgrade;
+              }
+          }" | sudo tee /etc/nginx/sites-available/api.blazenet.work
+
+          sudo ln -s /etc/nginx/sites-available/api.blazenet.work /etc/nginx/sites-enabled/api.blazenet.work
+          sudo nginx -t
+          sudo systemctl restart nginx
+
+          # Deploy the app
           cd /home/code/blazenetworkbot
           git pull
           python3 -m venv venv
