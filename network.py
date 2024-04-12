@@ -21,7 +21,15 @@ NODES = [
         "full_address": "http://amsterdam.blazenet.work:2053",
         "panel": "sanaei",
         "username": "admin",
-        "password": "6A2kDwb6dw3zBGccP3O"
+        "password": "EJxqvqybi91w"
+    },
+    {
+        "id": "blazenetwork-uk-london",
+        "name": "🇬🇧 London",
+        "full_address": "http://london.blazenet.work:2053",
+        "panel": "sanaei",
+        "username": "admin",
+        "password": "0694S3o6ycAR"
     },
 ]
 
