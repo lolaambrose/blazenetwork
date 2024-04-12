@@ -3,6 +3,7 @@
 # telegram
 TELEGRAM_TOKEN = '7168749932:AAHL1RbbRZZFtaArj3UBS5j0ASGfyejmKCU'
 TELEGRAM_ADMINS = [6113190687, 6405543408]
+TELEGRAM_CHANNEL = '@blazesecurity'
 
 # database 
 MONGODB_URI = os.getenv('MONGO_URI', 'mongodb://localhost:27017')

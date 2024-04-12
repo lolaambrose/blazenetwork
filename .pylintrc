@@ -1,0 +1,9 @@
+[MESSAGES CONTROL]
+
+disable=C,W,M,R,
+unused-import,
+logging-fstring-interpolation,
+logging-not-lazy,
+logging-too-many-args,
+logging-too-few-args
+,missing-docstring

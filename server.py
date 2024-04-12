@@ -1,14 +1,10 @@
-'''
-    TO-DO: 
-    - fix notify_expire_subs()
-    - implement SUBSCRIPTION and bonuses fetch from database & other settings
-'''
-
 import asyncio
 import json
 import hashlib
 import base64
+
 from aiohttp import web
+from aiohttp.web import AppRunner, TCPSite
 
 import config
 import payments
@@ -16,6 +12,7 @@ import network
 import telegram
 
 from logger import logger
+from telegram import Utils
 
 app = web.Application()
 
@@ -58,13 +55,5 @@ async def handle_callback(request):
 
 app.router.add_post('/api/v1/merchant/callback', handle_callback)
 
-async def on_startup(app):
-    logger.info('Starting merchant callback server')
-
-    await network.login_all()
-    #await database.initialize_subscriptions()
-    asyncio.create_task(telegram.main())
-
-app.on_startup.append(on_startup)
-
-web.run_app(app, port=8000)
+async def main():
+    return app

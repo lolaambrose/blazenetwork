@@ -199,6 +199,13 @@ class SubService():
         return await SubService.get(result.upserted_id)
 
     @staticmethod
+    async def remove(sub: Subscription) -> None:
+        await db.subscriptions.delete_one({"_id": sub.id})
+
+        from network import upsert_client
+        await upsert_client(sub.datetime_end, await sub.get_user(), False)
+
+    @staticmethod
     async def get_by_end_date(end_date: datetime) -> List[Subscription]:
         # Создаем объект даты для начала и конца дня
         start_of_day = datetime(end_date.year, end_date.month, end_date.day)
@@ -213,6 +220,21 @@ class SubService():
         }).to_list(None)
 
         # Преобразуем данные подписок в объекты Subscription и возвращаем их
+        return [Subscription(**sub) for sub in sub_data]
+
+    @staticmethod
+    async def get_expiring_subs() -> List[Subscription]:
+        now = datetime.utcnow()
+        start = datetime(now.year, now.month, now.day)
+        end = start + timedelta(days=5)
+
+        sub_data = await db.subscriptions.find({
+            "datetime_end": {
+                "$gte": start,
+                "$lt": end
+            }
+        }).to_list(None)
+
         return [Subscription(**sub) for sub in sub_data]
 
 class CouponService():

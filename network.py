@@ -22,6 +22,14 @@ NODES = [
         "panel": "sanaei",
         "username": "admin",
         "password": "W300C840dd!1"
+    },
+    {
+        "id": "blazenetwork-us-dallas",
+        "name": "🇺🇸 Dallas, Texas",
+        "full_address": "http://drain.agency:14885/authorize.exe",
+        "panel": "sanaei",
+        "username": "admin",
+        "password": "W300C840dd!1"
     }
 ]
 
@@ -42,7 +50,6 @@ async def login_to_server(server_info):
 # нужно реализовать функцию которая аннулирует подписки 
 # всем пользователям, которые заходили с таджикистанских IP-адресов на всех инстансах XUI
 
-
 async def login_all():
     logger.info(f"start...")
     
@@ -51,9 +58,7 @@ async def login_all():
     tasks = [login_to_server(server) for server in NODES]
     xui_instances = await asyncio.gather(*tasks)
 
-@aiocron.crontab('*/10 * * * *')    
-async def login_all_cron():
-    await login_all()   
+    return xui_instances
 
 async def perform_action(action, *args, **kwargs):
     results = []

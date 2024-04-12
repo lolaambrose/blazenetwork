@@ -3,12 +3,8 @@ from aiogram.enums import ParseMode
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputFile, KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove, inline_keyboard_button, inline_keyboard_markup
 from aiogram.filters.command import Command, CommandObject
 from datetime import datetime, timedelta, timezone
-from qrcode.image.styledpil import StyledPilImage
-from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
-from qrcode.image.styles.colormasks import RadialGradiantColorMask
+from aiogram.exceptions import TelegramBadRequest
 
-import aiogram.filters
-import asyncio
 import uuid
 import aiocron
 import qrcode
@@ -71,7 +67,7 @@ async def main():
     global bot
     bot = Bot(config.TELEGRAM_TOKEN, parse_mode=ParseMode.HTML)
 
-    #await database.initialize_coupons()
+    await database.initialize_coupons()
     
     await dp.start_polling(bot) 
    
@@ -116,16 +112,23 @@ async def start(message: types.Message):
             if coupon_data:
                 balance = coupon_data["value"]
                 await CouponService.activate(coupon, message.chat.id)
+
+                logger.info(f"user {message.chat.id} activated coupon {coupon} with value ${balance}")
+                bot.send_message(message.chat.id, f"<b>Купон <code>{coupon}</code> успешно активирован!\n</b>💰 Ваш баланс пополнен на <b>${balance}</b>")
             else:
                 await bot.send_message(message.chat.id, f"<b>Купон <code>{coupon}</code> не найден или уже недействителен.</b>")
+                logger.info(f"user {message.chat.id} tried to activate invalid coupon {coupon}.")
 
         user = await UserService.init_user(message.chat.id, str(uuid.uuid4()), datetime.now(), referral_id, balance=balance)
     else:
         if coupon:
             coupon_data = await CouponService.get_valid(coupon, user.id)
             if coupon_data:
-                await Admin.add_balance(user, coupon_data["value"])
+                await Admin.add_balance(user, coupon_data["value"], notify=False)
                 await CouponService.activate(coupon, user.id)
+
+                logger.info(f"user {user.id} activated coupon {coupon} with value ${coupon_data['value']}")
+                await bot.send_message(user.id, f"<b>Купон <code>{coupon}</code> успешно активирован!\n</b>💰 Ваш баланс пополнен на <b>${coupon_data['value']}</b>")
             else:
                 await bot.send_message(message.chat.id, f"<b>Купон <code>{coupon}</code> не найден или уже недействителен.</b>")
 
@@ -145,8 +148,7 @@ async def start(message: types.Message):
         keyboard=kb
     )
 
-    await message.reply("Добро пожаловать в <b>blazeVPN</b>!\n\nВыберите действие", reply_markup=keyboard)
-
+    await message.reply("Добро пожаловать в <b>🚀 blazeVPN</b>!\n\nВыберите действие", reply_markup=keyboard)
 
 """
     my_subscription(message: types.Message)
@@ -297,6 +299,23 @@ async def menu_buy(argument):
         return
 
     await bot.send_chat_action(message.chat.id, 'typing')
+
+    if not await Utils.is_user_subscribed(message.chat.id):
+        channel = config.TELEGRAM_CHANNEL.lstrip('@')
+
+        kb = [
+                [InlineKeyboardButton(text="🚀 Подписаться", url=f'tg://resolve?domain={channel}')],
+                [InlineKeyboardButton(text="🔄 Проверить подписку", callback_data="menu_buy_subscription")]
+            ]
+        await message.answer("Привет! Я заметил, что ты еще не подписался на наш новостной канал.\n\n"
+                            "🔔 <b>Почему стоит подписаться?</b>\n"
+                            "- 📢 Получай последние обновления и улучшения сервиса.\n"
+                            "- 🚀 Узнавай о специальных акциях и скидках.\n"
+                            "- 🛡️ Гарантия безопасности: будь в курсе важных новостей и предупреждений.\n\n"
+
+                            f"Пожалуйста, <a href='{config.TELEGRAM_CHANNEL}'>подпишись на наш канал</a>, чтобы продолжить. Это займет всего мгновение!\n\n", 
+                            disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+        return
     
     kb = []
 
@@ -457,6 +476,9 @@ async def action_confirm_buy(query: types.CallbackQuery):
 
     result_sub = await Admin.add_subscription(user, sub_data)
 
+    for admin in config.TELEGRAM_ADMINS:
+        await bot.send_message(admin, f"<i>[ADMIN NOTIFY]</i> <b>Пользователь <code>{user.id}</code> купил подписку <code>{sub_data['name']}</code> за <code>${sub_data['price']}</code>.</b>")
+
     if user.referral_id != 0:
         referrer = await UserService.get(user.referral_id)
 
@@ -564,36 +586,15 @@ async def menu_information(message: types.Message):
                          "Свяжитесь с нашей поддержкой для получения дополнительной информации.", reply_markup=markup)
 
 class Utils:
-    ''' need to fix this
     @staticmethod
-    @aiocron.crontab('0 0 * * *')
-    async def stop_expired_subs():
-        logger.info(f"started...")
-        # Получаем вчерашнюю дату
-        yesterday = datetime.now() - timedelta(days=1)
-
-        # Получаем все подписки, которые закончились вчера
-        expired_subs = await SubService.get_by_end_date(yesterday)
-
-        for sub in expired_subs:
-            await Admin.remove_subscription(sub)
-            logger.info(f"subscription for {sub.user_id} has been stopped.")    
-    '''
-
-    @staticmethod
-    @aiocron.crontab('0 15 * * *')
-    async def notify_expiring_subs():
-        logger.info(f"started...")
-        kb = [InlineKeyboardButton(text="💳 Продлить подписку", callback_data="menu_buy_subscription")]
-
-        users = await UserService.get_all()  # Получаем всех пользователей
-        for user in users:
-            active_sub = await user.get_active_sub()  # Получаем активную подписку пользователя
-            if active_sub:
-                days_left = (active_sub.datetime_end - datetime.now()).days  # Вычисляем, сколько дней осталось до конца подписки
-                if days_left in [1, 5]:
-                    await bot.send_message(user.id, f"⏳ У вас осталось <b>{days_left} дней</b> до конца подписки.", 
-                                        reply_markup=InlineKeyboardMarkup(inline_keyboard=[kb]))   
+    async def is_user_subscribed(user_id: int) -> bool:
+        try:
+            member = await bot.get_chat_member(config.TELEGRAM_CHANNEL, user_id)
+            if member.status == "member" or member.status == "administrator" or member.status == "creator":
+                return True
+        except TelegramBadRequest:
+            logger.error(f"user {user_id} is not subscribed to the channel.")
+            return False
 
     @staticmethod
     async def render_profile(user: User, chat_id: int = None, admin: bool = False):
@@ -616,7 +617,7 @@ class Utils:
                         f"<b>└</b> Получено бонусных дней – <code>{user.referral_days}</code>\n\n" \
                         f"{('🔧 Вы – <b>администратор!</b>' if await user.is_admin else '')}" 
 
-        if admin or user.is_admin:                    
+        if admin or await user.is_admin:                    
             profile_info += f"\n\n📅 Дата регистрации – {user.register_time.strftime('%d/%m/%Y')}\n" \
                             f"🆔 UUID – {str(user.uuid)}\n" \
                             f"💸 Потраченная сумма – ${user.total_spent}"
@@ -707,6 +708,8 @@ class Admin:
         
         result =  await SubService.upsert(new_sub)
 
+        logger.info(f"user {user.id} has bought a subscription {sub_data['name']} for ${sub_data['price']}.")
+
         if notify:
             await bot.send_message(user.id, f"✅ Подписка <b>{sub_data['name']}</b> успешно куплена\n")
 
@@ -718,9 +721,7 @@ class Admin:
 
         # Если пользователь найден, обновляем его статус
         if user:
-            sub.datetime_end = datetime.now() - timedelta(days=1)
-
-            await SubService.upsert(sub)
+            await SubService.remove(sub)
 
             logger.info(f"user {user.id}'s subscription has been stopped.")
             
@@ -729,7 +730,7 @@ class Admin:
             logger.info(f"user {sub.user_id} not found.")
 
     @staticmethod
-    async def add_balance(user: User, amount: float):
+    async def add_balance(user: User, amount: float, notify: bool = True):
         # проверить на наличие пользователя
         if not user:
             logger.error(f'user {user.id} not found.')
@@ -738,7 +739,9 @@ class Admin:
         user.balance += amount
 
         await UserService.upsert(user)
-        await bot.send_message(user.id, f"💰 Ваш баланс успешно пополнен на <b>${amount}</b>")
+
+        if notify:
+            await bot.send_message(user.id, f"💰 Ваш баланс успешно пополнен на <b>${amount}</b>")
 
         logger.info(f'user {user.id} balance has been updated by +${amount}')
 
@@ -863,7 +866,7 @@ class Admin:
 
         await Admin.add_subscription(user, sub_data)
         await message.answer(f"Подписка <b>{name}</b> успешно добавлена для ID <code>{user_id}</code>.")
-        logger.info(f"subscription {id} added for {user.id}") 
+        logger.info(f"[ADMIN] subscription {id} added for {user.id} by {message.from_user.id}") 
 
     @staticmethod
     @dp.message(Command(commands=["remove_sub"]))
@@ -884,4 +887,38 @@ class Admin:
     
         await Admin.remove_subscription(sub)
         await message.answer(f"Подписка успешно удалена для ID <code>{user_id}</code>.")
-        logger.info(f"subscription removed for {user.id}")
+        logger.info(f"[ADMIN] subscription removed for {user.id} by {message.from_user.id}")
+
+async def monitor_servers():
+    logger.info('started...')
+
+    xui_instances = await network.login_all()
+
+    for xui, is_logged_in, server_info in xui_instances:
+        if not is_logged_in:
+            logger.error(f'server {server_info["full_address"]} is not responding!')
+
+            for admin in config.TELEGRAM_ADMINS:
+                await bot.send_message(admin, f"<i>[ADMIN NOTIFY]</i> <b>❌ server {server_info['full_address']} is not responding.</b>")
+
+async def notify_expiring_subs():
+    logger.info(f"started...")
+    kb = [InlineKeyboardButton(text="💳 Продлить подписку", callback_data="menu_buy_subscription")]
+
+    subscriptions = await SubService.get_expiring_subs()  # Получаем все подписки, у которых дата окончания подходит
+
+    for subscription in subscriptions:
+        user = await subscription.get_user()  # Получаем пользователя для каждой подписки
+        days_left = (subscription.datetime_end - datetime.now()).days  # Вычисляем, сколько дней осталось до конца подписки
+        if days_left in [1, 5, 0]:
+            if days_left != 0:
+                await bot.send_message(user.id, f"⏳ У вас осталось <b>{days_left} дней</b> до конца подписки.", 
+                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[kb]))   
+            else:
+                await bot.send_message(user.id, f"⏳ У вас остался <b>последний день</b> подписки.\n Пожалуйста, продлите подписку, чтобы не потерять доступ к сервису.", 
+                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[kb]))
+
+# Функции для старта cron задач
+async def start_cron_jobs():
+    aiocron.crontab('*/5 * * * *', func=monitor_servers, start=True)
+    aiocron.crontab('* * * * *', func=notify_expiring_subs, start=True)
