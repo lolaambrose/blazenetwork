@@ -21,7 +21,7 @@ NODES = [
         "full_address": "http://amsterdam.blazenet.work:2053",
         "panel": "sanaei",
         "username": "admin",
-        "password": "uI+P?83+s>3~7:V(u[k"
+        "password": "6A2kDwb6dw3zBGccP3O"
     },
 ]
 
