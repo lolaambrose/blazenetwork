@@ -1,6 +1,7 @@
-name: Backup
+name: MongoDB Backup
 
 on:
+  workflow-dispatch:
   schedule:
     - cron: 0 * * * *
 
