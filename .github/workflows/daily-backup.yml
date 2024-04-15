@@ -1,5 +1,4 @@
-name: DB Backup every hour
-
+name: DB Backup every day
 on:
   workflow_dispatch:
   schedule:
