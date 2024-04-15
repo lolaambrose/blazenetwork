@@ -10,7 +10,7 @@ import aiocron
 import qrcode
 import io
 
-from database import SubService, WalletService, User, Subscription, UserService, CouponService
+from database import ServerService, SubService, WalletService, User, Subscription, UserService, CouponService
 from logger import logger
 
 import config
@@ -183,7 +183,7 @@ async def menu_subscription(message: types.Message):
     
     kb = []
             
-    for server in network.NODES:
+    for server in network.SERVERS:
         # Сопоставляем сервер с экземпляром xui
         xui_instance = next((instance for instance in network.xui_instances if instance[2]["id"] == server["id"]), None)
         
@@ -587,6 +587,24 @@ async def menu_information(message: types.Message):
 
 class Utils:
     @staticmethod
+    @admin_required
+    async def render_status(message: types.Message):
+        status_msg =  f"<b>🔧 Статус серверов</b>\n\n"
+
+        for xui, is_logged_in, server_info in network.XUI_INSTANCES:
+            up, down = await network.get_updown_stats(xui)
+            uptime = str(timedelta(seconds=server_info["uptime"]))
+
+            status_msg += "🟢 " if is_logged_in else "🔴 "
+            status_msg += "<b>" + server_info["name"] + "</b>\n"  
+            status_msg += "├ 🔗 <code>" + server_info["full_address"] + "</code>\n"
+            status_msg += "├ ⌛ Последний опрос <code>" + server_info["last_seen"].strftime('%H:%M %d/%m') + "</code>\n"
+            status_msg += "├ 🕑 Uptime <code>" + uptime + "</code>\n"
+            status_msg += f"└ ⬆️ <code>{round(up)} Mbytes</code> ⬇️ <code>{round(down)} Mbytes</code>\n\n"
+            
+        await message.answer(status_msg)
+
+    @staticmethod
     async def is_user_subscribed(user_id: int) -> bool:
         try:
             member = await bot.get_chat_member(config.TELEGRAM_CHANNEL, user_id)
@@ -760,10 +778,18 @@ class Admin:
         logger.info(f'user {user.id} balance has been set to ${amount}')
 
     @staticmethod
+    @dp.message(Command(commands=["status"]))
+    @admin_required
+    async def command_status(message: types.Message, **kwargs):
+        await network.login_all()
+        await Utils.render_status(message)
+
+    @staticmethod
     @dp.message(Command(commands=["login"]))
     @admin_required
     async def command_login(message: types.Message, **kwargs):
         await network.login_all()
+        await Utils.render_status(message, **kwargs)
 
     @staticmethod
     @dp.message(Command(commands=["add_balance"]))
