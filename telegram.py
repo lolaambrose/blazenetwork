@@ -22,26 +22,6 @@ import middlewares
 dp = Dispatcher()
 dp.message.middleware(middlewares.BanMiddleware())
 
-SUBSCRIPTIONS = [
-        {
-        "name": "VPN на 1 месяц",
-        "id": "1_month",
-        "price": 15.00,
-        "duration": 30,
-        "referral_bonus": 3
-        },
-
-        {
-        "name": "VPN на 3 месяца",
-        "id": "3_month",
-        "price": 45.00,
-        "duration": 90,
-        "referral_bonus": 8
-        }
-]
-
-BONUS_REFERRAL_DAYS = 3
-
 def admin_required(func):
     async def wrapped(message: types.Message, *args, **kwargs):
         user = await UserService.get(message.from_user.id)
@@ -67,6 +47,7 @@ async def main():
     global bot
     bot = Bot(config.TELEGRAM_TOKEN, parse_mode=ParseMode.HTML)
 
+    await SubService.fetch_prices()
     await database.initialize_coupons()
     
     await dp.start_polling(bot) 
@@ -185,7 +166,7 @@ async def menu_subscription(message: types.Message):
             
     for server in network.SERVERS:
         # Сопоставляем сервер с экземпляром xui
-        xui_instance = next((instance for instance in network.xui_instances if instance[2]["id"] == server["id"]), None)
+        xui_instance = next((instance for instance in network.XUI_INSTANCES if instance[2]["id"] == server["id"]), None)
         
         # Если экземпляр xui найден и пользователь залогинен, добавляем сервер в меню
         if xui_instance and xui_instance[1]:  # xui_instance[1] содержит значение is_logged_in
@@ -214,7 +195,7 @@ async def action_connect(query: types.CallbackQuery):
         query.answer("<b>У вас нет активной подписки.</b>")
         return     
     
-    for xui, is_logged_in, serverinfo in network.xui_instances:
+    for xui, is_logged_in, serverinfo in network.XUI_INSTANCES:
         if not is_logged_in or serverinfo["id"] != server_id:
             continue
 
@@ -268,8 +249,8 @@ async def menu_invite(query: types.CallbackQuery):
                             f"<code>{referral_link}</code>\n\n" \
 
     referral_description += "Если ваш реферал купит подписку, то вы получите:\n"
-    for sub in SUBSCRIPTIONS:
-        referral_description += f"• за <b>{sub['name']}</b> – <code>{sub['referral_bonus']}</code> бонусных дней!\n"
+    for sub in SubService.POOL:
+        referral_description += f"• за <b>{sub['name_ru']}</b> – <code>{sub['referral_bonus']}</code> бонусных дней!\n"
 
     await bot.send_message(query.from_user.id, referral_description)
     await bot.answer_callback_query(query.id)
@@ -319,9 +300,9 @@ async def menu_buy(argument):
     
     kb = []
 
-    for sub in SUBSCRIPTIONS:
+    for sub in SubService.POOL:
         kb += [
-            [InlineKeyboardButton(text=f"📅 Купить {sub['name']} – ${sub['price']}", callback_data=f"buy_{sub['id']}")]
+            [InlineKeyboardButton(text=f"📅 Купить {sub['name_ru']} – ${sub['price']}", callback_data=f"buy_{sub['id']}")]
             ]
     
     keyboard = InlineKeyboardMarkup(
@@ -351,7 +332,7 @@ async def action_prolongate(query: types.CallbackQuery):
         await query.message.answer("<b>У вас нет активной подписки.</b>")
         return
 
-    for sub in SUBSCRIPTIONS:
+    for sub in SubService.POOL:
         if sub['id'] == subscription:
             sub_data = sub
             break
@@ -376,7 +357,7 @@ async def action_prolongate(query: types.CallbackQuery):
 
         await Admin.add_referal_days(referrer, sub_data["referral_bonus"])
 
-    await query.message.answer(f"✅ Подписка <b>{sub_data['name']}</b> успешно продлена на <code>{sub_data['duration']}</code> дней.")
+    await query.message.answer(f"✅ Подписка <b>{sub_data['name_ru']}</b> успешно продлена на <code>{sub_data['duration']}</code> дней.")
 
 """
     handle_buy_callback(query: types.CallbackQuery)
@@ -397,7 +378,7 @@ async def action_buy_callback(query: types.CallbackQuery):
     subscription = "_".join(query.data.split("_")[1:])
     sub_data = None
 
-    for sub in SUBSCRIPTIONS:
+    for sub in SubService.POOL:
         if sub['id'] == subscription:
             sub_data = sub
             break
@@ -430,7 +411,7 @@ async def action_buy_callback(query: types.CallbackQuery):
             InlineKeyboardButton(text="✅", callback_data=f"confirm_buy_{sub_data['id']}"),
             InlineKeyboardButton(text="❌", callback_data=f"menu_buy_subscription")
          ]
-    await query.message.answer(f"Вы собираетесь купить <b>{sub_data['name']} за ${sub_data['price']}</b>\n\n"
+    await query.message.answer(f"Вы собираетесь купить <b>{sub_data['name_ru']} за ${sub_data['price']}</b>\n\n"
                                f"<b>Вы уверены, что хотите купить эту подписку?</b>", 
                                reply_markup=InlineKeyboardMarkup(inline_keyboard=[kb]))
 
@@ -454,7 +435,7 @@ async def action_confirm_buy(query: types.CallbackQuery):
     subscription = "_".join(query.data.split("_")[2:])
     sub_data = None
 
-    for sub in SUBSCRIPTIONS:
+    for sub in SubService.POOL:
         if sub['id'] == subscription:
             sub_data = sub
             break
@@ -477,7 +458,7 @@ async def action_confirm_buy(query: types.CallbackQuery):
     result_sub = await Admin.add_subscription(user, sub_data)
 
     for admin in config.TELEGRAM_ADMINS:
-        await bot.send_message(admin, f"<i>[ADMIN NOTIFY]</i> <b>Пользователь <code>{user.id}</code> купил подписку <code>{sub_data['name']}</code> за <code>${sub_data['price']}</code>.</b>")
+        await bot.send_message(admin, f"<i>[ADMIN NOTIFY]</i> <b>Пользователь <code>{user.id}</code> купил подписку <code>{sub_data['name_ru']}</code> за <code>${sub_data['price']}</code>.</b>")
 
     if user.referral_id != 0:
         referrer = await UserService.get(user.referral_id)
@@ -721,15 +702,15 @@ class Admin:
             user_id=user.id, 
             datetime_start=datetime.utcnow(), 
             datetime_end=datetime.utcnow() + timedelta(days=sub_data["duration"]),
-            plan=sub_data["name"],
+            plan=sub_data["name_ru"],
             cost=sub_data["price"])
         
         result =  await SubService.upsert(new_sub)
 
-        logger.info(f"user {user.id} has bought a subscription {sub_data['name']} for ${sub_data['price']}.")
+        logger.info(f"user {user.id} has bought a subscription {sub_data['name_ru']} for ${sub_data['price']}.")
 
         if notify:
-            await bot.send_message(user.id, f"✅ Подписка <b>{sub_data['name']}</b> успешно куплена\n")
+            await bot.send_message(user.id, f"✅ Подписка <b>{sub_data['name_ru']}</b> успешно куплена\n")
 
         return result
 
@@ -789,7 +770,7 @@ class Admin:
     @admin_required
     async def command_login(message: types.Message, **kwargs):
         await network.login_all()
-        await Utils.render_status(message, **kwargs)
+        await Utils.render_status(message)
 
     @staticmethod
     @dp.message(Command(commands=["add_balance"]))
@@ -877,18 +858,18 @@ class Admin:
             await message.answer("Пользователь не найден.")
             return
 
-        if not any(sub["id"] == id for sub in SUBSCRIPTIONS):
+        if not any(sub["id"] == id for sub in SubService.POOL):
             await message.answer("Подписка не найдена по ID.")
             return
         
         sub_data = {
-            "name": [sub["name"] for sub in SUBSCRIPTIONS if sub["id"] == id][0],
+            "name": [sub["name_ru"] for sub in SubService.POOL if sub["id"] == id][0],
             "id": id,
-            "price": [sub["price"] for sub in SUBSCRIPTIONS if sub["id"] == id][0],
-            "duration": [sub["duration"] for sub in SUBSCRIPTIONS if sub["id"] == id][0]
+            "price": [sub["price"] for sub in SubService.POOL if sub["id"] == id][0],
+            "duration": [sub["duration"] for sub in SubService.POOL if sub["id"] == id][0]
         }
 
-        name = sub_data["name"]
+        name = sub_data["name_ru"]
 
         await Admin.add_subscription(user, sub_data)
         await message.answer(f"Подписка <b>{name}</b> успешно добавлена для ID <code>{user_id}</code>.")

@@ -193,6 +193,18 @@ class UserService():
         return [User(**user) for user in users if await User(**user).get_active_sub()]
 
 class SubService():
+    POOL = []
+
+    @staticmethod
+    async def fetch_prices() -> bool:
+        try:
+            SubService.POOL = await db.pricing.find().to_list(None)
+            logger.info("fetched prices")
+            return True
+        except Exception as e:
+            logger.error("failed to fetch prices: %s" % e)
+            return False
+
     @staticmethod
     async def get(id: PyObjectId) -> Subscription:
         sub_data = await db.subscriptions.find_one({"_id": id})
