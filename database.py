@@ -122,6 +122,19 @@ class Subscription(BaseModel):
             ObjectId: str
         }
         populate_by_name = True
+
+class ServerService():
+    @staticmethod
+    async def get_all() -> List[dict]:
+        return await db.servers.find().to_list(None)
+
+    @staticmethod
+    async def get_by_id(id: str) -> dict:
+        return await db.servers.find_one({"id": id})
+
+    @staticmethod
+    async def update(data: dict) -> dict:
+        return await db.servers.update_one({"id": data["id"]}, {"$set": data})
     
 class UserService():
     @staticmethod
@@ -173,6 +186,11 @@ class UserService():
                  uuid=uuid, 
                  referral_id=referral_id))
         return user
+    
+    @staticmethod
+    async def get_subscribed_users() -> List[User]:
+        users = await db.users.find().to_list(None)
+        return [User(**user) for user in users if await User(**user).get_active_sub()]
 
 class SubService():
     @staticmethod

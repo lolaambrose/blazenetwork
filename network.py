@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+﻿from datetime import datetime, timedelta
 from inspect import getabsfile
 from pyxui import XUI, xui
 from pyxui.errors import BadLogin, NotFound
@@ -11,27 +11,10 @@ import json
 import aiocron
 from requests import HTTPError
 
-from database import Subscription, User
+from database import Subscription, User, db, ServerService, UserService
 from logger import logger
 
-NODES = [
-    {
-        "id": "blazenetwork-nl-amsterdam",
-        "name": "🇳🇱 Amsterdam",
-        "full_address": "http://amsterdam.blazenet.work:2053",
-        "panel": "sanaei",
-        "username": "admin",
-        "password": "EJxqvqybi91w"
-    },
-    {
-        "id": "blazenetwork-de-frankfurt",
-        "name": "🇩🇪 Frankfurt",
-        "full_address": "http://frankfurt.blazenet.work:2053",
-        "panel": "sanaei",
-        "username": "admin",
-        "password": "YDTrQK3wmun9m1WDfT5"
-    },
-]
+LAST_UPDATE = 0
 
 async def login_to_server(server_info):
     xui = XUI(full_address=server_info["full_address"], panel=server_info["panel"], https=False)
@@ -39,31 +22,64 @@ async def login_to_server(server_info):
     try:
         # Попытка выполнить синхронный вызов login в отдельном потоке
         await asyncio.to_thread(xui.login, server_info["username"], server_info["password"])
-        logger.info(f"Logged in to {server_info['full_address']} successfully.")
+        logger.info(f"{server_info['id']}: successful login")
+
+        if server_info["new"]:
+            logger.info(f"Detected new server ({server_info['id']}), updating clients...")
+
+            active_users = await UserService.get_subscribed_users()
+            logger.info(f"found {len(active_users)} active users")
+
+            for user in active_users:
+                sub = await user.get_active_sub()
+
+                if sub is not None:
+                    await upsert_client(sub.datetime_end, user, True)
+                    logger.info(f"{server_info['id']}: upserted client #{user.id}")
+
+            server_info["new"] = False
+            logger.info(f"{server_info['id']}: updated new server successfully.")
+
+        if not server_info['uptime']:
+            server_info['uptime'] = int(0)
+        
+        if server_info['uptime'] != 0:
+            server_info['uptime'] += int((datetime.utcnow() - server_info['last_seen']).total_seconds())
+        else:
+            server_info['uptime'] = int(timedelta(seconds=1).total_seconds())
+
+        logger.info(f"{server_info['id']}: uptime = {timedelta(seconds=server_info['uptime'])}")
+        server_info['last_seen'] = datetime.utcnow()
+        await ServerService.update(server_info)
         
         return xui, True, server_info
     except (BadLogin, Exception) as e:
-        logger.error(f"Failed to log in to {server_info['full_address']}: {e}")
+        logger.error(f"{server_info['full_address']}: failed to log in to {e}")
+
+        server_info["uptime"] = int(0)
+        await ServerService.update(server_info)
         
         return xui, False, server_info
-
-# нужно реализовать функцию которая аннулирует подписки 
-# всем пользователям, которые заходили с таджикистанских IP-адресов на всех инстансах XUI
-
+    
 async def login_all():
     logger.info(f"start...")
     
-    global xui_instances
-    
-    tasks = [login_to_server(server) for server in NODES]
-    xui_instances = await asyncio.gather(*tasks)
+    global SERVERS
+    global XUI_INSTANCES
 
-    return xui_instances
+    SERVERS = await ServerService.get_all()
+    
+    tasks = [login_to_server(server) for server in SERVERS]
+    XUI_INSTANCES = await asyncio.gather(*tasks)
+
+    LAST_UPDATE = datetime.utcnow()
+
+    return XUI_INSTANCES
 
 async def perform_action(action, *args, **kwargs):
     results = []
     
-    for xui, is_logged_in, serverinfo in xui_instances:
+    for xui, is_logged_in, serverinfo in XUI_INSTANCES:
         if not is_logged_in:
             continue  # Пропускаем серверы, к которым не удалось подключиться
         try:
@@ -75,8 +91,9 @@ async def perform_action(action, *args, **kwargs):
             
     return results
 
+
 async def upsert_client(expire_time: datetime, user: User, enable: bool, limit_ip=5):
-    for xui, is_logged_in, server_info in xui_instances:
+    for xui, is_logged_in, server_info in XUI_INSTANCES:
         if not is_logged_in:
             continue
         try:
@@ -120,7 +137,7 @@ async def upsert_client(expire_time: datetime, user: User, enable: bool, limit_i
 async def serverconfigs_by_user(inbound_id, email):
     results = []
     
-    for xui, is_logged_in, server_info in xui_instances:
+    for xui, is_logged_in, server_info in XUI_INSTANCES:
         if not is_logged_in:
             continue
         try:
@@ -136,7 +153,7 @@ async def serverconfigs_by_user(inbound_id, email):
 
 async def serverconfig_by_user(inbound_id, email, server_info):
     try:
-        xui, is_logged_in, server_info = next(filter(lambda x: x[2] == server_info, xui_instances))
+        xui, is_logged_in, server_info = next(filter(lambda x: x[2] == server_info, XUI_INSTANCES))
         if not is_logged_in:
             return None
         
@@ -183,3 +200,15 @@ async def get_client_config(xui_instance, inbound_id, email, srv_info):
         logger.error(f"error retrieving client config: {e}")
         
     return None
+
+async def get_updown_stats(xui, inbound: int=1):
+    data = await asyncio.to_thread(xui.get_inbounds)
+
+    up = down = 0
+
+    if data['success'] and len(data['obj']) > 1:
+        obj = data['obj'][1]  # Get the second inbound
+        up = obj['up'] / (1024 ** 2)  # Convert to MB
+        down = obj['down'] / (1024 ** 2)  # Convert to MB
+
+    return up, down
